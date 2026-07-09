@@ -30,3 +30,10 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+matrix-cli
+!/cmd/matrix-cli
+
+data/
+
+*.md
+!README.md
