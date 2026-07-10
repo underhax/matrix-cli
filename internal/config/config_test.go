@@ -15,6 +15,7 @@ func TestSaveAndLoad(t *testing.T) {
 		UserID:        "@user:example.com",
 		AccessToken:   "test_token",
 		DeviceID:      "TEST_DEVICE",
+		DeviceName:    "TestBot",
 	}
 
 	if err := Save(sessionFile, session); err != nil {

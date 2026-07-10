@@ -41,6 +41,9 @@ func TestLogin_Success(t *testing.T) {
 	if session.DeviceID != "TEST_DEVICE_ID" {
 		t.Errorf("expected device ID TEST_DEVICE_ID, got %s", session.DeviceID)
 	}
+	if session.DeviceName != "TestBot" {
+		t.Errorf("expected device Name TestBot, got %s", session.DeviceName)
+	}
 }
 
 func TestLogin_Failure(t *testing.T) {

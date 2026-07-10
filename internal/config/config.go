@@ -16,6 +16,7 @@ type Session struct {
 	UserID        string `json:"user_id"`
 	AccessToken   string `json:"access_token"`
 	DeviceID      string `json:"device_id"`
+	DeviceName    string `json:"device_name"`
 }
 
 // Load reads the session configuration from a sanitized file path.
@@ -42,6 +43,7 @@ func Save(path string, session *Session) error {
 		"user_id":        session.UserID,
 		"access_token":   session.AccessToken,
 		"device_id":      session.DeviceID,
+		"device_name":    session.DeviceName,
 	}
 
 	data, err := json.MarshalIndent(disk, "", "  ")
