@@ -11,9 +11,9 @@ import (
 )
 
 func TestHandleAuth_MissingCredentials(t *testing.T) {
-	err := handleAuth(context.Background(), "http://localhost", "", "", "", "session.json")
+	err := handleAuth(context.Background(), "http://localhost", "", "", "", "", "dummy.json")
 	if err == nil {
-		t.Error("expected error for missing credentials, got nil")
+		t.Error("Expected error due to missing user/pass, got nil")
 	}
 }
 
@@ -37,7 +37,7 @@ func TestHandleAuth_Success(t *testing.T) {
 	tempDir := t.TempDir()
 	sessionFile := filepath.Join(tempDir, "session.json")
 
-	err := handleAuth(context.Background(), server.URL, "user", "pass", "TestDevice", sessionFile)
+	err := handleAuth(context.Background(), server.URL, "user", "pass", "TestDevice", "", sessionFile)
 	if err != nil {
 		t.Fatalf("expected handleAuth to succeed, got %v", err)
 	}

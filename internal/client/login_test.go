@@ -27,7 +27,7 @@ func TestLogin_Success(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	session, err := Login(ctx, server.URL, "user", "pass", "TestBot")
+	session, err := Login(ctx, server.URL, "user", "pass", "TestBot", "")
 	if err != nil {
 		t.Fatalf("expected login to succeed, got %v", err)
 	}
@@ -63,7 +63,7 @@ func TestLogin_Failure(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	_, err := Login(ctx, server.URL, "user", "wrong_pass", "TestBot")
+	_, err := Login(ctx, server.URL, "user", "wrong_pass", "TestBot", "")
 	if err == nil {
 		t.Error("expected login to fail, got nil")
 	}

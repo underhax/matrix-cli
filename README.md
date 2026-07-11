@@ -1,6 +1,6 @@
 # matrix-cli
 
-`matrix-cli` is a headless and lightweight Matrix client written in Go, designed to operate from the terminal. 
+`matrix-cli` is a headless and lightweight Matrix client written in Go, designed to operate from the terminal.
 
 **Primary Use Case:** It acts as an E2EE (End-to-End Encryption) helper tool for external scripts and bots (like router management bots). While unencrypted Matrix rooms can be managed with simple HTTP API requests (e.g., using `curl`), interacting with encrypted rooms requires complex cryptographic state management. `matrix-cli` handles all the heavy lifting of E2EE, authentication, and sync, outputting structured JSON that can be easily parsed and consumed by your external tools.
 
@@ -35,18 +35,34 @@ This project relies on the excellent [mautrix-go](https://github.com/mautrix/go)
 
 ### Authentication (`auth`)
 ```text
-Usage: matrix-cli --mode auth --server <DOMAIN_OR_URL> --user <ID> --pass <PASSWORD> [--device <NAME>] [--data-dir <PATH>]
-Login to Matrix and save session.
+Usage: matrix-cli --mode auth --server <DOMAIN_OR_URL> [--user <ID>] [--pass <PASSWORD>] [--sso-callback-port <PORT>] [--device <NAME>] [--data-dir <PATH>]
+Login to Matrix and save session. Supports both SSO/OAuth and password login.
 
 Examples:
-  # Auto-discover API URL via .well-known (recommended):
-  matrix-cli --mode auth --server 'matrix.org' --user '@bot:matrix.org' --pass 's3cret'
+  # Auto-discover API URL and use SSO or prompt interactively (recommended):
+  matrix-cli --mode auth --server 'matrix.org'
 
-  # Specify exact HTTPS URL:
+  # Specify exact HTTPS URL and force password login:
   matrix-cli --mode auth --server 'https://synapse.example.com' --user '@bot:example.com' --pass 's3cret'
 
-  # Specify local HTTP URL with port and custom device name:
-  matrix-cli --mode auth --server 'http://127.0.0.1:8008' --user '@bot:localhost' --pass 's3cret' --device 'MyBot'
+  # Use SSO with a specific callback port:
+  matrix-cli --mode auth --server 'matrix.example.com' --sso-callback-port 8080
+```
+
+### Key Bootstrap (`bootstrap`)
+```text
+Usage: matrix-cli --mode bootstrap [--new-keys] [--recovery-key <KEY_STRING>] [--data-dir <PATH>]
+Initialize cross-signing keys for the current session.
+
+Examples:
+  # Interactively prompt for recovery key (secure and recommended):
+  matrix-cli --mode bootstrap
+
+  # Generate new keys (may prompt for password depending on UIA):
+  matrix-cli --mode bootstrap --new-keys
+
+  # Load keys explicitly (pass the actual 48-character string, not a file path):
+  matrix-cli --mode bootstrap --recovery-key 'XXXX-XXXX-XXXX-XXXX'
 ```
 
 ### Sending Messages (`send`)
@@ -84,6 +100,7 @@ Get detailed info for specific room(s).
 
 Examples:
   matrix-cli --mode room-info --rooms '!abc123:matrix.org'
+  matrix-cli --mode room-info --rooms '!abc123:matrix.org !abc123defg456'
 ```
 
 ### Device Verification (`verify`)
