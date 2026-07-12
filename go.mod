@@ -1,4 +1,4 @@
-module matrix-cli
+module github.com/underhax/matrix-cli
 
 go 1.26.5
 

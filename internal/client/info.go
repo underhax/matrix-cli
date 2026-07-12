@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"matrix-cli/internal/ui/spinner"
 	"os"
 	"strings"
 	"sync/atomic"
+
+	"github.com/underhax/matrix-cli/internal/ui/spinner"
 
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"

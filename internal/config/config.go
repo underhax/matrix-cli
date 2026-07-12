@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"matrix-cli/internal/consts"
+	"github.com/underhax/matrix-cli/internal/consts"
 )
 
 // Session represents the persisted matrix authentication state required for client initialization

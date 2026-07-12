@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"matrix-cli/internal/consts"
+	"github.com/underhax/matrix-cli/internal/consts"
 )
 
 func TestHandleAuth_MissingCredentials(t *testing.T) {

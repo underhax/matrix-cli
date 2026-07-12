@@ -13,10 +13,10 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"matrix-cli/internal/client"
-	"matrix-cli/internal/config"
-	"matrix-cli/internal/consts"
-	"matrix-cli/internal/store"
+	"github.com/underhax/matrix-cli/internal/client"
+	"github.com/underhax/matrix-cli/internal/config"
+	"github.com/underhax/matrix-cli/internal/consts"
+	"github.com/underhax/matrix-cli/internal/store"
 
 	"github.com/rs/zerolog"
 )
@@ -177,7 +177,7 @@ func run(args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if *opts.verbose {
+	if *opts.debugFlag {
 		logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).With().Timestamp().Logger().Level(zerolog.DebugLevel)
 		ctx = logger.WithContext(ctx)
 	}

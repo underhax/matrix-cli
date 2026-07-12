@@ -3,7 +3,8 @@ package client
 import (
 	"context"
 	"fmt"
-	"matrix-cli/internal/config"
+
+	"github.com/underhax/matrix-cli/internal/config"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/id"

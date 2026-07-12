@@ -23,21 +23,25 @@ func (c *Client) registerStateHooks() {
 	syncer.OnEventType(event.ToDeviceSecretRequest, c.onSecretRequest)
 }
 
+var secretRequestDelay = 2 * time.Second
+
 func (c *Client) onSecretRequest(ctx context.Context, evt *event.Event) {
 	if req, ok := evt.Content.Parsed.(*event.SecretRequestEventContent); ok {
-		if mach := c.Crypto.Machine(); mach != nil {
+		if mach := getCryptoMachine(c.Crypto); mach != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Received secret request from %s for %s\n", evt.Sender, req.Name)
 			bgCtx := context.WithoutCancel(ctx)
 			go func() {
-				time.Sleep(2 * time.Second)
+				time.Sleep(secretRequestDelay)
 				if DebugMode {
 					_, _ = fmt.Fprintf(os.Stderr, "[DEBUG SECRET] Processing request %s from %s after delay...\n", req.Name, evt.Sender)
 				}
-				debugHandleSecretRequest(bgCtx, mach, evt.Sender, req)
+				doDebugHandleSecretRequest(bgCtx, mach, evt.Sender, req)
 			}()
 		}
 	}
 }
+
+var doDebugHandleSecretRequest = debugHandleSecretRequest
 
 func debugHandleSecretRequest(ctx context.Context, mach *crypto.OlmMachine, userID id.UserID, content *event.SecretRequestEventContent) {
 	if content.Action != event.SecretRequestRequest {
@@ -59,12 +63,12 @@ func debugHandleSecretRequest(ctx context.Context, mach *crypto.OlmMachine, user
 		return
 	}
 
-	device, err := mach.GetOrFetchDevice(ctx, mach.Client.UserID, content.RequestingDeviceID)
+	device, err := getOrFetchDevice(ctx, mach, userID, content.RequestingDeviceID)
 	if err != nil {
 		debugLog("[DEBUG SECRET] Failed to fetch device %s: %v\n", content.RequestingDeviceID, err)
 		return
 	}
-	trust, err := mach.ResolveTrustContext(ctx, device)
+	trust, err := resolveTrustContext(ctx, mach, device)
 	if err != nil {
 		debugLog("[DEBUG SECRET] Failed to resolve trust for %s: %v\n", content.RequestingDeviceID, err)
 		return
@@ -74,7 +78,7 @@ func debugHandleSecretRequest(ctx context.Context, mach *crypto.OlmMachine, user
 		return
 	}
 
-	secret, err := mach.CryptoStore.GetSecret(ctx, content.Name)
+	secret, err := getSecret(ctx, mach, content.Name)
 	if err != nil {
 		debugLog("[DEBUG SECRET] Failed to get secret %s from store: %v\n", content.Name, err)
 		return
@@ -84,8 +88,8 @@ func debugHandleSecretRequest(ctx context.Context, mach *crypto.OlmMachine, user
 	}
 
 	debugLog("[DEBUG SECRET] SENDING secret %s to device %s\n", content.Name, content.RequestingDeviceID)
-	err = mach.SendEncryptedToDevice(ctx, device, event.ToDeviceSecretSend, event.Content{
-		Parsed: event.SecretSendEventContent{
+	err = sendEncryptedToDevice(ctx, mach, device, event.ToDeviceSecretSend, event.Content{
+		Parsed: &event.SecretSendEventContent{
 			RequestID: content.RequestID,
 			Secret:    secret,
 		},

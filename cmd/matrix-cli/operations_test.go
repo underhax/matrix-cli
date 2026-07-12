@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"matrix-cli/internal/client"
-	"matrix-cli/internal/config"
+	"github.com/underhax/matrix-cli/internal/client"
+	"github.com/underhax/matrix-cli/internal/config"
 
 	"maunium.net/go/mautrix"
 )

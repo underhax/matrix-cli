@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"matrix-cli/internal/config"
+	"github.com/underhax/matrix-cli/internal/config"
 
 	"maunium.net/go/mautrix"
 )

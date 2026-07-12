@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"matrix-cli/internal/consts"
+	"github.com/underhax/matrix-cli/internal/consts"
 )
 
 func TestLogin_Success(t *testing.T) {
