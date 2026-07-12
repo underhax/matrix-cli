@@ -32,3 +32,5 @@ func ReadPassword(prompt string) (string, error) {
 
 	return strings.TrimSpace(string(bytePassword)), nil
 }
+
+var readPassword = ReadPassword

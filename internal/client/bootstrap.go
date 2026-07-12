@@ -18,18 +18,6 @@ import (
 // Bootstrap handles either importing cross-signing keys via recovery key,
 // or generating new ones.
 func (c *Client) Bootstrap(ctx context.Context, newKeys bool, recoveryKey string) error {
-	if !newKeys && recoveryKey == "" {
-		var promptErr error
-		recoveryKey, promptErr = ReadPassword("Enter recovery key: ")
-		if promptErr != nil {
-			return fmt.Errorf("failed to prompt for recovery key: %w", promptErr)
-		}
-		recoveryKey = strings.TrimSpace(recoveryKey)
-		if recoveryKey == "" {
-			return errors.New("recovery key cannot be empty. use --new-keys to generate new ones")
-		}
-	}
-
 	if recoveryKey != "" {
 		return c.bootstrapRecoveryKey(ctx, recoveryKey)
 	}
@@ -38,18 +26,28 @@ func (c *Client) Bootstrap(ctx context.Context, newKeys bool, recoveryKey string
 		return c.bootstrapNewKeys(ctx)
 	}
 
-	return errors.New("must provide either --recovery-key or --new-keys")
+	var promptErr error
+	recoveryKey, promptErr = readPassword("Enter recovery key: ")
+	if promptErr != nil {
+		return fmt.Errorf("failed to prompt for recovery key: %w", promptErr)
+	}
+	recoveryKey = strings.TrimSpace(recoveryKey)
+	if recoveryKey == "" {
+		return errors.New("recovery key cannot be empty. use --new-keys to generate new ones")
+	}
+
+	return c.bootstrapRecoveryKey(ctx, recoveryKey)
 }
 
 func (c *Client) bootstrapRecoveryKey(ctx context.Context, recoveryKey string) error {
-	mach := c.Crypto.Machine()
+	mach := getOlmMachine(c)
 	_, _ = fmt.Fprintln(os.Stderr, "Fetching cross-signing keys from SSSS using recovery key...")
-	if err := mach.VerifyWithRecoveryKey(ctx, recoveryKey); err != nil {
+	if err := verifyWithRecoveryKey(ctx, mach, recoveryKey); err != nil {
 		return fmt.Errorf("failed to verify with recovery key: %w", err)
 	}
 
-	keys := mach.ExportCrossSigningKeys()
-	c.saveCrossSigningKeys(ctx, keys)
+	keys := exportCrossSigningKeys(mach)
+	doSaveCrossSigningKeys(ctx, c, keys)
 
 	_, _ = fmt.Fprintln(os.Stderr, "Successfully fetched and saved cross-signing keys.")
 
@@ -66,26 +64,26 @@ func (c *Client) bootstrapRecoveryKey(ctx context.Context, recoveryKey string) e
 }
 
 func (c *Client) bootstrapNewKeys(ctx context.Context) error {
-	mach := c.Crypto.Machine()
+	mach := getOlmMachine(c)
 	_, _ = fmt.Fprintln(os.Stderr, "Generating new cross-signing keys and SSSS...")
-	newRecoveryKey, _, err := mach.GenerateAndUploadCrossSigningKeys(ctx, func(uiResp *mautrix.RespUserInteractive) any {
+	newRecoveryKey, _, err := generateAndUploadCrossSigningKeys(ctx, mach, func(uiResp *mautrix.RespUserInteractive) any {
 		return handleUIA(c, uiResp)
 	}, "")
 	if err != nil {
 		return fmt.Errorf("failed to generate and upload keys: %w", err)
 	}
 
-	if errDev := mach.SignOwnDevice(ctx, mach.OwnIdentity()); errDev != nil {
+	if errDev := signOwnDevice(ctx, mach, ownIdentity(mach)); errDev != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "warning: failed to sign own device: %v\n", errDev)
 	}
-	if errMast := mach.SignOwnMasterKey(ctx); errMast != nil {
+	if errMast := signOwnMasterKey(ctx, mach); errMast != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "warning: failed to sign own master key: %v\n", errMast)
 	}
 
-	keys := mach.ExportCrossSigningKeys()
-	c.saveCrossSigningKeys(ctx, keys)
+	keys := exportCrossSigningKeys(mach)
+	doSaveCrossSigningKeys(ctx, c, keys)
 
-	if errSetup := c.setupMegolmBackup(ctx, newRecoveryKey); errSetup != nil {
+	if errSetup := doSetupMegolmBackup(ctx, c, newRecoveryKey); errSetup != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "warning: failed to setup megolm backup: %v\n", errSetup)
 	}
 
@@ -106,28 +104,28 @@ func (c *Client) bootstrapNewKeys(ctx context.Context) error {
 }
 
 func (c *Client) setupMegolmBackup(ctx context.Context, recoveryKey string) error {
-	mach := c.Crypto.Machine()
+	mach := getOlmMachine(c)
 
-	keyID, keyData, err := mach.SSSS.GetDefaultKeyData(ctx)
+	keyID, keyData, err := ssssGetDefaultKeyData(ctx, mach)
 	if err != nil {
 		return fmt.Errorf("get SSSS key data: %w", err)
 	}
-	ssssKey, err := keyData.VerifyRecoveryKey(keyID, recoveryKey)
+	ssssKey, err := verifyRecoveryKey(keyData, keyID, recoveryKey)
 	if err != nil {
 		return fmt.Errorf("verify recovery key: %w", err)
 	}
 
-	megolmKey, err := backup.NewMegolmBackupKey()
+	megolmKey, err := newMegolmBackupKey()
 	if err != nil {
 		return fmt.Errorf("generate backup key: %w", err)
 	}
 
-	err = mach.CryptoStore.PutSecret(ctx, id.SecretMegolmBackupV1, base64.RawStdEncoding.EncodeToString(megolmKey.Bytes()))
+	err = putSecret(ctx, mach, id.SecretMegolmBackupV1, base64.RawStdEncoding.EncodeToString(megolmKey.Bytes()))
 	if err != nil {
 		return fmt.Errorf("save backup key to store: %w", err)
 	}
 
-	err = mach.SSSS.SetEncryptedAccountData(ctx, event.AccountDataMegolmBackupKey, megolmKey.Bytes(), ssssKey)
+	err = setEncryptedAccountData(ctx, mach, event.AccountDataMegolmBackupKey, megolmKey.Bytes(), ssssKey)
 	if err != nil {
 		return fmt.Errorf("upload backup key to SSSS: %w", err)
 	}
@@ -138,7 +136,7 @@ func (c *Client) setupMegolmBackup(ctx context.Context, recoveryKey string) erro
 			PublicKey: id.Ed25519(base64.RawStdEncoding.EncodeToString(megolmKey.PublicKey().Bytes())),
 		},
 	}
-	_, err = mach.Client.CreateKeyBackupVersion(ctx, req)
+	_, err = createKeyBackupVersion(ctx, mach, req)
 	if err != nil {
 		return fmt.Errorf("create key backup version: %w", err)
 	}

@@ -3,8 +3,17 @@ package client
 import (
 	"context"
 	"encoding/base64"
+	"errors"
+	"os"
 	"strings"
 	"testing"
+
+	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/crypto"
+	"maunium.net/go/mautrix/crypto/backup"
+	"maunium.net/go/mautrix/crypto/ssss"
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 )
 
 func TestDecodeBase64(t *testing.T) {
@@ -33,11 +42,296 @@ func TestDecodeBase64(t *testing.T) {
 	}
 }
 
-func TestBootstrap_MissingParams(t *testing.T) {
+func TestBootstrapRecoveryKey(t *testing.T) {
 	c := &Client{}
-	err := c.Bootstrap(context.Background(), false, "")
-	expectedErrPrefix := "failed to prompt for recovery key"
-	if err == nil || !strings.HasPrefix(err.Error(), expectedErrPrefix) {
-		t.Errorf("unexpected error message: %v", err)
+	ctx := context.Background()
+
+	getOlmMachine = func(_ *Client) *crypto.OlmMachine { return nil }
+	defer func() { getOlmMachine = defaultGetOlmMachine }()
+
+	verifyWithRecoveryKey = func(_ context.Context, _ *crypto.OlmMachine, _ string) error {
+		return errors.New("mock verify err")
+	}
+	defer func() { verifyWithRecoveryKey = defaultVerifyWithRecoveryKey }()
+
+	err := c.bootstrapRecoveryKey(ctx, "invalid-key")
+	if err == nil || !strings.Contains(err.Error(), "mock verify err") {
+		t.Errorf("expected verify error, got %v", err)
+	}
+
+	verifyWithRecoveryKey = func(_ context.Context, _ *crypto.OlmMachine, _ string) error {
+		return nil
+	}
+	exportCrossSigningKeys = func(_ *crypto.OlmMachine) crypto.CrossSigningSeeds {
+		return crypto.CrossSigningSeeds{}
+	}
+	defer func() { exportCrossSigningKeys = defaultExportCrossSigningKeys }()
+
+	doSaveCrossSigningKeys = func(_ context.Context, _ *Client, _ crypto.CrossSigningSeeds) {}
+	defer func() { doSaveCrossSigningKeys = defaultSaveCrossSigningKeys }()
+
+	oldStdout := os.Stdout
+	devNull, errOpen := os.OpenFile(os.DevNull, os.O_WRONLY, 0o600)
+	if errOpen != nil {
+		t.Fatalf("failed to open devnull: %v", errOpen)
+	}
+	os.Stdout = devNull
+	defer func() {
+		os.Stdout = oldStdout
+		if errClose := devNull.Close(); errClose != nil {
+			t.Logf("failed to close devnull: %v", errClose)
+		}
+	}()
+
+	err = c.bootstrapRecoveryKey(ctx, "valid-key")
+	if err != nil {
+		t.Errorf("expected success, got %v", err)
+	}
+
+	if errClose := devNull.Close(); errClose != nil {
+		t.Logf("failed to close devnull early: %v", errClose)
+	}
+	err = c.bootstrapRecoveryKey(ctx, "valid-key")
+	if err != nil {
+		t.Errorf("expected success despite write error, got %v", err)
+	}
+}
+
+func TestBootstrapNewKeys(t *testing.T) {
+	c := &Client{}
+	ctx := context.Background()
+
+	getOlmMachine = func(_ *Client) *crypto.OlmMachine { return nil }
+	defer func() { getOlmMachine = defaultGetOlmMachine }()
+
+	generateAndUploadCrossSigningKeys = func(_ context.Context, _ *crypto.OlmMachine, _ func(*mautrix.RespUserInteractive) any, _ string) (string, *crypto.CrossSigningKeysCache, error) {
+		return "", nil, errors.New("mock generate err")
+	}
+	defer func() { generateAndUploadCrossSigningKeys = defaultGenerateAndUploadCrossSigningKeys }()
+
+	err := c.bootstrapNewKeys(ctx)
+	if err == nil || !strings.Contains(err.Error(), "mock generate err") {
+		t.Errorf("expected generate error, got %v", err)
+	}
+
+	generateAndUploadCrossSigningKeys = func(_ context.Context, _ *crypto.OlmMachine, cb func(*mautrix.RespUserInteractive) any, _ string) (string, *crypto.CrossSigningKeysCache, error) {
+		cb(&mautrix.RespUserInteractive{})
+		return "new-recovery-key", nil, nil
+	}
+	ownIdentity = func(_ *crypto.OlmMachine) *id.Device { return nil }
+	defer func() { ownIdentity = defaultOwnIdentity }()
+
+	signOwnDevice = func(_ context.Context, _ *crypto.OlmMachine, _ *id.Device) error {
+		return errors.New("mock sign device err")
+	}
+	defer func() { signOwnDevice = defaultSignOwnDevice }()
+
+	signOwnMasterKey = func(_ context.Context, _ *crypto.OlmMachine) error {
+		return errors.New("mock sign master err")
+	}
+	defer func() { signOwnMasterKey = defaultSignOwnMasterKey }()
+
+	exportCrossSigningKeys = func(_ *crypto.OlmMachine) crypto.CrossSigningSeeds {
+		return crypto.CrossSigningSeeds{}
+	}
+	defer func() { exportCrossSigningKeys = defaultExportCrossSigningKeys }()
+
+	doSaveCrossSigningKeys = func(_ context.Context, _ *Client, _ crypto.CrossSigningSeeds) {}
+	defer func() { doSaveCrossSigningKeys = defaultSaveCrossSigningKeys }()
+
+	doSetupMegolmBackup = func(_ context.Context, _ *Client, _ string) error {
+		return errors.New("mock setup backup err")
+	}
+	defer func() { doSetupMegolmBackup = defaultSetupMegolmBackup }()
+
+	oldStdout := os.Stdout
+	devNull, errOpen := os.OpenFile(os.DevNull, os.O_WRONLY, 0o600)
+	if errOpen != nil {
+		t.Fatalf("failed to open devnull: %v", errOpen)
+	}
+	os.Stdout = devNull
+	defer func() {
+		os.Stdout = oldStdout
+		if errClose := devNull.Close(); errClose != nil {
+			t.Logf("failed to close devnull: %v", errClose)
+		}
+	}()
+
+	err = c.bootstrapNewKeys(ctx)
+	if err != nil {
+		t.Errorf("expected success, got %v", err)
+	}
+
+	if errClose := devNull.Close(); errClose != nil {
+		t.Logf("failed to close devnull early: %v", errClose)
+	}
+	err = c.bootstrapNewKeys(ctx)
+	if err != nil {
+		t.Errorf("expected success despite write error, got %v", err)
+	}
+}
+
+func TestBootstrap(t *testing.T) {
+	c := &Client{}
+	ctx := context.Background()
+
+	getOlmMachine = func(_ *Client) *crypto.OlmMachine { return nil }
+	verifyWithRecoveryKey = func(_ context.Context, _ *crypto.OlmMachine, _ string) error { return nil }
+	exportCrossSigningKeys = func(_ *crypto.OlmMachine) crypto.CrossSigningSeeds { return crypto.CrossSigningSeeds{} }
+	doSaveCrossSigningKeys = func(_ context.Context, _ *Client, _ crypto.CrossSigningSeeds) {}
+	generateAndUploadCrossSigningKeys = func(_ context.Context, _ *crypto.OlmMachine, cb func(*mautrix.RespUserInteractive) any, _ string) (string, *crypto.CrossSigningKeysCache, error) {
+		cb(&mautrix.RespUserInteractive{})
+		return "ok", nil, nil
+	}
+	ownIdentity = func(_ *crypto.OlmMachine) *id.Device { return nil }
+	signOwnDevice = func(_ context.Context, _ *crypto.OlmMachine, _ *id.Device) error { return nil }
+	signOwnMasterKey = func(_ context.Context, _ *crypto.OlmMachine) error { return nil }
+	doSetupMegolmBackup = func(_ context.Context, _ *Client, _ string) error { return nil }
+
+	defer func() {
+		getOlmMachine = defaultGetOlmMachine
+		verifyWithRecoveryKey = defaultVerifyWithRecoveryKey
+		exportCrossSigningKeys = defaultExportCrossSigningKeys
+		doSaveCrossSigningKeys = defaultSaveCrossSigningKeys
+		generateAndUploadCrossSigningKeys = defaultGenerateAndUploadCrossSigningKeys
+		ownIdentity = defaultOwnIdentity
+		signOwnDevice = defaultSignOwnDevice
+		signOwnMasterKey = defaultSignOwnMasterKey
+		doSetupMegolmBackup = defaultSetupMegolmBackup
+	}()
+
+	err := c.Bootstrap(ctx, false, "direct-key")
+	if err != nil {
+		t.Errorf("Bootstrap with direct key failed: %v", err)
+	}
+
+	err = c.Bootstrap(ctx, true, "")
+	if err != nil {
+		t.Errorf("Bootstrap with new keys failed: %v", err)
+	}
+
+	readPassword = func(_ string) (string, error) {
+		return "", errors.New("mock read err")
+	}
+	err = c.Bootstrap(ctx, false, "")
+	if err == nil || !strings.Contains(err.Error(), "failed to prompt") {
+		t.Errorf("expected prompt err, got %v", err)
+	}
+
+	readPassword = func(_ string) (string, error) {
+		return "  ", nil
+	}
+	err = c.Bootstrap(ctx, false, "")
+	if err == nil || !strings.Contains(err.Error(), "recovery key cannot be empty") {
+		t.Errorf("expected empty key error, got %v", err)
+	}
+
+	readPassword = func(_ string) (string, error) {
+		return "prompted-key", nil
+	}
+	err = c.Bootstrap(ctx, false, "")
+	if err != nil {
+		t.Errorf("expected success with prompted key, got %v", err)
+	}
+	defer func() { readPassword = ReadPassword }()
+
+	err = c.Bootstrap(ctx, true, "both-provided")
+	if err != nil {
+		t.Errorf("if both provided, should prefer recovery key, got %v", err)
+	}
+}
+
+func TestSetupMegolmBackup(t *testing.T) {
+	c := &Client{}
+	ctx := context.Background()
+
+	getOlmMachine = func(_ *Client) *crypto.OlmMachine { return nil }
+	defer func() { getOlmMachine = defaultGetOlmMachine }()
+
+	ssssGetDefaultKeyData = func(_ context.Context, _ *crypto.OlmMachine) (string, *ssss.KeyMetadata, error) {
+		return "", nil, errors.New("mock ssss err")
+	}
+	err := c.setupMegolmBackup(ctx, "key")
+	if err == nil || !strings.Contains(err.Error(), "mock ssss err") {
+		t.Errorf("expected ssss err, got %v", err)
+	}
+
+	ssssGetDefaultKeyData = func(_ context.Context, _ *crypto.OlmMachine) (string, *ssss.KeyMetadata, error) {
+		return "key-id", &ssss.KeyMetadata{}, nil
+	}
+	defer func() { ssssGetDefaultKeyData = defaultSSSSGetDefaultKeyData }()
+
+	verifyRecoveryKey = func(_ *ssss.KeyMetadata, _ string, _ string) (*ssss.Key, error) {
+		return nil, errors.New("mock verify err")
+	}
+	err = c.setupMegolmBackup(ctx, "key")
+	if err == nil || !strings.Contains(err.Error(), "mock verify err") {
+		t.Errorf("expected verify err, got %v", err)
+	}
+
+	verifyRecoveryKey = func(_ *ssss.KeyMetadata, _ string, _ string) (*ssss.Key, error) {
+		return &ssss.Key{}, nil
+	}
+	defer func() { verifyRecoveryKey = defaultVerifyRecoveryKey }()
+
+	newMegolmBackupKey = func() (*backup.MegolmBackupKey, error) {
+		return nil, errors.New("mock generate err")
+	}
+	err = c.setupMegolmBackup(ctx, "key")
+	if err == nil || !strings.Contains(err.Error(), "mock generate err") {
+		t.Errorf("expected generate err, got %v", err)
+	}
+
+	newMegolmBackupKey = func() (*backup.MegolmBackupKey, error) {
+		key, genErr := backup.NewMegolmBackupKey()
+		if genErr != nil {
+			return nil, genErr
+		}
+		return key, nil
+	}
+	defer func() { newMegolmBackupKey = defaultNewMegolmBackupKey }()
+
+	putSecret = func(_ context.Context, _ *crypto.OlmMachine, _ id.Secret, _ string) error {
+		return errors.New("mock put err")
+	}
+	err = c.setupMegolmBackup(ctx, "key")
+	if err == nil || !strings.Contains(err.Error(), "mock put err") {
+		t.Errorf("expected put err, got %v", err)
+	}
+
+	putSecret = func(_ context.Context, _ *crypto.OlmMachine, _ id.Secret, _ string) error {
+		return nil
+	}
+	defer func() { putSecret = defaultPutSecret }()
+
+	setEncryptedAccountData = func(_ context.Context, _ *crypto.OlmMachine, _ event.Type, _ []byte, _ *ssss.Key) error {
+		return errors.New("mock encrypt err")
+	}
+	err = c.setupMegolmBackup(ctx, "key")
+	if err == nil || !strings.Contains(err.Error(), "mock encrypt err") {
+		t.Errorf("expected encrypt err, got %v", err)
+	}
+
+	setEncryptedAccountData = func(_ context.Context, _ *crypto.OlmMachine, _ event.Type, _ []byte, _ *ssss.Key) error {
+		return nil
+	}
+	defer func() { setEncryptedAccountData = defaultSetEncryptedAccountData }()
+
+	createKeyBackupVersion = func(_ context.Context, _ *crypto.OlmMachine, _ *mautrix.ReqRoomKeysVersionCreate[backup.MegolmAuthData]) (*mautrix.RespRoomKeysVersionCreate, error) {
+		return nil, errors.New("mock create err")
+	}
+	err = c.setupMegolmBackup(ctx, "key")
+	if err == nil || !strings.Contains(err.Error(), "mock create err") {
+		t.Errorf("expected create err, got %v", err)
+	}
+
+	createKeyBackupVersion = func(_ context.Context, _ *crypto.OlmMachine, _ *mautrix.ReqRoomKeysVersionCreate[backup.MegolmAuthData]) (*mautrix.RespRoomKeysVersionCreate, error) {
+		return &mautrix.RespRoomKeysVersionCreate{}, nil
+	}
+	defer func() { createKeyBackupVersion = defaultCreateKeyBackupVersion }()
+
+	err = c.setupMegolmBackup(ctx, "key")
+	if err != nil {
+		t.Errorf("expected success, got %v", err)
 	}
 }
