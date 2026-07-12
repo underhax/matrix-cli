@@ -11,13 +11,23 @@ import (
 	_ "github.com/mattn/go-sqlite3" // Register the sqlite3 database driver.
 )
 
+func defaultSQLOpen(driverName, dataSourceName string) (*sql.DB, error) {
+	db, err := sql.Open(driverName, dataSourceName)
+	if err != nil {
+		err = fmt.Errorf("sql open error: %w", err)
+	}
+	return db, err
+}
+
+var sqlOpen = defaultSQLOpen
+
 // OpenDB initializes a SQLite connection tailored for high-concurrency environments.
 // It explicitly enforces WAL journal mode and a busy timeout to prevent locking contention
 // between independent CLI invocations (e.g., background listener and ad-hoc sender).
 func OpenDB(ctx context.Context, path string) (*sql.DB, error) {
 	dsn := fmt.Sprintf("file:%s?_journal_mode=WAL&_busy_timeout=5000&_fk=true", path)
 
-	db, err := sql.Open("sqlite3", dsn)
+	db, err := sqlOpen("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}

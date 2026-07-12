@@ -7,6 +7,13 @@ import (
 	"path/filepath"
 )
 
+func defaultRandRead(b []byte) (n int, err error) {
+	n, _ = rand.Read(b)
+	return n, nil
+}
+
+var randRead = defaultRandRead
+
 // GetOrGeneratePickleKey reads the local symmetric encryption key from the specified path.
 // If the file does not exist, it generates a cryptographically secure 32-byte key
 // and saves it to the path with restricted file permissions.
@@ -22,7 +29,7 @@ func GetOrGeneratePickleKey(path string) ([]byte, error) {
 	}
 
 	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
+	if _, err := randRead(key); err != nil {
 		return nil, fmt.Errorf("failed to generate random pickle key: %w", err)
 	}
 
