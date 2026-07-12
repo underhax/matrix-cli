@@ -61,3 +61,34 @@ func TestSave_InvalidPath(t *testing.T) {
 		t.Error("expected error saving to a directory path, got nil")
 	}
 }
+
+func TestLoad_InvalidJSON(t *testing.T) {
+	tempDir := t.TempDir()
+	sessionFile := filepath.Join(tempDir, "invalid.json")
+
+	if err := os.WriteFile(sessionFile, []byte("{ bad json"), 0o600); err != nil {
+		t.Fatalf("failed to write bad json: %v", err)
+	}
+
+	_, err := Load(sessionFile)
+	if err == nil {
+		t.Error("expected error loading invalid JSON, got nil")
+	}
+}
+
+func TestSave_MarshalError(t *testing.T) {
+	oldMarshal := jsonMarshalIndent
+	defer func() { jsonMarshalIndent = oldMarshal }()
+	jsonMarshalIndent = func(_ any, _, _ string) ([]byte, error) {
+		return nil, os.ErrPermission
+	}
+
+	tempDir := t.TempDir()
+	sessionFile := filepath.Join(tempDir, "session.json")
+	session := &Session{}
+
+	err := Save(sessionFile, session)
+	if err == nil {
+		t.Error("expected error from json marshal failure, got nil")
+	}
+}

@@ -38,6 +38,8 @@ func Load(path string) (*Session, error) {
 	return &session, nil
 }
 
+var jsonMarshalIndent = json.MarshalIndent
+
 // Save writes the current authentication state to a sanitized file path for future executions.
 func Save(path string, session *Session) error {
 	disk := map[string]string{
@@ -48,7 +50,7 @@ func Save(path string, session *Session) error {
 		consts.KeyDeviceName:  session.DeviceName,
 	}
 
-	data, err := json.MarshalIndent(disk, "", "  ")
+	data, err := jsonMarshalIndent(disk, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal session: %w", err)
 	}
