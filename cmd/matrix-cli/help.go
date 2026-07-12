@@ -7,7 +7,7 @@ import (
 
 func printUsage(modeVal string) {
 	switch modeVal {
-	case ModeAuth:
+	case modeAuth:
 		fmt.Fprintf(os.Stderr, "Usage: matrix-cli --mode auth --server <DOMAIN_OR_URL> [--user <ID>] [--pass <PASSWORD>] [--sso-callback-port <PORT>] [--device <NAME>] [--data-dir <PATH>]\n")
 		fmt.Fprintf(os.Stderr, "Login to Matrix and save session. Supports both SSO/OAuth and password login.\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
@@ -17,7 +17,7 @@ func printUsage(modeVal string) {
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode auth --server 'https://synapse.example.com' --user '@bot:example.com' --pass 's3cret'\n\n")
 		fmt.Fprintf(os.Stderr, "  # Use SSO with a specific callback port:\n")
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode auth --server 'matrix.example.com' --sso-callback-port 8080\n")
-	case ModeBootstrap:
+	case modeBootstrap:
 		fmt.Fprintf(os.Stderr, "Usage: matrix-cli --mode bootstrap [--new-keys] [--recovery-key <KEY_STRING>] [--data-dir <PATH>]\n")
 		fmt.Fprintf(os.Stderr, "Initialize cross-signing keys for the current session.\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
@@ -27,18 +27,18 @@ func printUsage(modeVal string) {
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode bootstrap --new-keys\n\n")
 		fmt.Fprintf(os.Stderr, "  # Load keys explicitly (pass the actual 48-character string, not a file path):\n")
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode bootstrap --recovery-key 'XXXX-XXXX-XXXX-XXXX'\n")
-	case ModeListen:
+	case modeListen:
 		fmt.Fprintf(os.Stderr, "Usage: matrix-cli --mode listen [--rooms \"<ID1> <ID2>\"] [--data-dir <PATH>]\n")
 		fmt.Fprintf(os.Stderr, "Listen for incoming messages and events. If --rooms is provided, only events from those rooms are processed.\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode listen\n")
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode listen --rooms \"!room1:example.com !room2v12\"\n")
-	case ModeSend:
+	case modeSend:
 		fmt.Fprintf(os.Stderr, "Usage: matrix-cli --mode send --rooms \"<ID>\" --message \"<TEXT>\" [--data-dir <PATH>]\n")
 		fmt.Fprintf(os.Stderr, "Send a message to one or more rooms.\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode send --rooms \"!room1:example.com\" --message \"Hello world!\"\n")
-	case ModeVerify:
+	case modeVerify:
 		fmt.Fprintf(os.Stderr, "Usage: matrix-cli --mode verify [--user <@user:example.com>] [--data-dir <PATH>]\n")
 		fmt.Fprintf(os.Stderr, "Start an interactive device verification (SAS) flow.\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
@@ -46,24 +46,24 @@ func printUsage(modeVal string) {
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode verify\n\n")
 		fmt.Fprintf(os.Stderr, "  # Initiate verification with another user (or your own devices):\n")
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode verify --user '@bob:example.com'\n")
-	case ModeRooms:
+	case modeRooms:
 		fmt.Fprintf(os.Stderr, "Usage: matrix-cli --mode rooms [--verbose] [--data-dir <PATH>]\n")
 		fmt.Fprintf(os.Stderr, "List joined rooms.\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode rooms\n")
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode rooms --verbose --data-dir ./Data\n")
-	case ModeRoomInfo:
+	case modeRoomInfo:
 		fmt.Fprintf(os.Stderr, "Usage: matrix-cli --mode room-info --rooms \"<ID>\" [--data-dir <PATH>]\n")
 		fmt.Fprintf(os.Stderr, "Get detailed info for specific room(s).\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode room-info --rooms \"!room1:example.com !room2v12\"\n")
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode room-info --rooms \"!room3v12\"\n")
-	case ModeDevices:
+	case modeDevices:
 		fmt.Fprintf(os.Stderr, "Usage: matrix-cli --mode devices [--data-dir <PATH>]\n")
 		fmt.Fprintf(os.Stderr, "List active devices for the account.\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode devices\n")
-	case ModeLogout:
+	case modeLogout:
 		fmt.Fprintf(os.Stderr, "Usage: matrix-cli --mode logout [--data-dir <PATH>]\n")
 		fmt.Fprintf(os.Stderr, "Logout from the homeserver and delete the local session and database.\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
@@ -100,15 +100,15 @@ func printModeList(exclude string) {
 		name string
 		desc string
 	}{
-		{ModeAuth, "Login to Matrix and save session"},
-		{ModeBootstrap, "Initialize cross-signing keys (generate new or import from SSSS)"},
-		{ModeListen, "Listen for incoming messages and events"},
-		{ModeSend, "Send a message to a room"},
-		{ModeVerify, "Start an interactive device verification (SAS) flow"},
-		{ModeRooms, "List joined rooms"},
-		{ModeRoomInfo, "Get detailed info for a specific room"},
-		{ModeDevices, "List active devices for the account"},
-		{ModeLogout, "Logout and clear local session"},
+		{modeAuth, "Login to Matrix and save session"},
+		{modeBootstrap, "Initialize cross-signing keys (generate new or import from SSSS)"},
+		{modeListen, "Listen for incoming messages and events"},
+		{modeSend, "Send a message to a room"},
+		{modeVerify, "Start an interactive device verification (SAS) flow"},
+		{modeRooms, "List joined rooms"},
+		{modeRoomInfo, "Get detailed info for a specific room"},
+		{modeDevices, "List active devices for the account"},
+		{modeLogout, "Logout and clear local session"},
 	}
 	for _, m := range modes {
 		if m.name != exclude {

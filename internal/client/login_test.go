@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"matrix-cli/internal/consts"
 )
 
 func TestLogin_Success(t *testing.T) {
@@ -13,9 +15,9 @@ func TestLogin_Success(t *testing.T) {
 		if r.URL.Path == "/_matrix/client/r0/login" || r.URL.Path == "/_matrix/client/v3/login" {
 			w.WriteHeader(http.StatusOK)
 			resp := map[string]any{
-				"user_id":      "@user:example.com",
-				"access_token": "test_token_123",
-				"device_id":    "TEST_DEVICE_ID",
+				consts.KeyUserID:      "@bot:example.com",
+				consts.KeyAccessToken: "token_bot_1",
+				consts.KeyDeviceID:    "DEV_BOT_1",
 			}
 			if err := json.NewEncoder(w).Encode(resp); err != nil {
 				panic(err)
@@ -27,22 +29,22 @@ func TestLogin_Success(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	session, err := Login(ctx, server.URL, "user", "pass", "TestBot", "")
+	session, err := Login(ctx, server.URL, "bot_user", "bot_pass", "BotDevice", "")
 	if err != nil {
 		t.Fatalf("expected login to succeed, got %v", err)
 	}
 
-	if session.UserID != "@user:example.com" {
-		t.Errorf("expected user ID @user:example.com, got %s", session.UserID)
+	if session.UserID != "@bot:example.com" {
+		t.Errorf("expected user ID @bot:example.com, got %s", session.UserID)
 	}
-	if session.AccessToken != "test_token_123" {
-		t.Errorf("expected token test_token_123, got %s", session.AccessToken)
+	if session.AccessToken != "token_bot_1" {
+		t.Errorf("expected token token_bot_1, got %s", session.AccessToken)
 	}
-	if session.DeviceID != "TEST_DEVICE_ID" {
-		t.Errorf("expected device ID TEST_DEVICE_ID, got %s", session.DeviceID)
+	if session.DeviceID != "DEV_BOT_1" {
+		t.Errorf("expected device ID DEV_BOT_1, got %s", session.DeviceID)
 	}
-	if session.DeviceName != "TestBot" {
-		t.Errorf("expected device Name TestBot, got %s", session.DeviceName)
+	if session.DeviceName != "BotDevice" {
+		t.Errorf("expected device Name BotDevice, got %s", session.DeviceName)
 	}
 }
 
@@ -63,7 +65,7 @@ func TestLogin_Failure(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	_, err := Login(ctx, server.URL, "user", "wrong_pass", "TestBot", "")
+	_, err := Login(ctx, server.URL, "wrong_user", "wrong_pass", "FailDevice", "")
 	if err == nil {
 		t.Error("expected login to fail, got nil")
 	}

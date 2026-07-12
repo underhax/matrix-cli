@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"matrix-cli/internal/consts"
 )
 
 // Session represents the persisted matrix authentication state required for client initialization
@@ -39,11 +41,11 @@ func Load(path string) (*Session, error) {
 // Save writes the current authentication state to a sanitized file path for future executions.
 func Save(path string, session *Session) error {
 	disk := map[string]string{
-		"homeserver_url": session.HomeserverURL,
-		"user_id":        session.UserID,
-		"access_token":   session.AccessToken,
-		"device_id":      session.DeviceID,
-		"device_name":    session.DeviceName,
+		"homeserver_url":      session.HomeserverURL,
+		consts.KeyUserID:      session.UserID,
+		consts.KeyAccessToken: session.AccessToken,
+		consts.KeyDeviceID:    session.DeviceID,
+		consts.KeyDeviceName:  session.DeviceName,
 	}
 
 	data, err := json.MarshalIndent(disk, "", "  ")
