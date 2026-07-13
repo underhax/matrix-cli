@@ -3,7 +3,6 @@ package client
 import (
 	"bufio"
 	"fmt"
-	"os"
 	"strings"
 
 	"maunium.net/go/mautrix"
@@ -29,55 +28,65 @@ func handleUIA(c *Client, uiResp *mautrix.RespUserInteractive) any {
 	}
 
 	if fallbackStage != "" {
-		fallbackURL := fmt.Sprintf("%s/_matrix/client/v3/auth/%s/fallback/web?session=%s",
-			strings.TrimSuffix(c.Matrix.HomeserverURL.String(), "/"),
-			fallbackStage,
-			uiResp.Session)
-
-		if _, err := fmt.Fprintln(os.Stdout, "\nThe server requires interactive authentication to proceed."); err != nil {
-			return nil
-		}
-		if _, err := fmt.Fprintf(os.Stdout, "Please open the following link in your browser to confirm this action:\n\n%s\n\n", fallbackURL); err != nil {
-			return nil
-		}
-		if _, err := fmt.Fprint(os.Stdout, "Press Enter here once you have successfully completed the authentication in your browser..."); err != nil {
-			return nil
-		}
-
-		reader := bufio.NewReader(os.Stdin)
-		if _, err := reader.ReadString('\n'); err != nil {
-			return nil
-		}
-
-		return map[string]any{
-			uiaKeyType: fallbackStage,
-			"session":  uiResp.Session,
-		}
+		return handleFallbackStage(c, fallbackStage, uiResp.Session)
 	}
 
 	if hasPasswordFlow {
-		if _, err := fmt.Fprintln(os.Stdout, "\nPassword confirmation is required for legacy servers."); err != nil {
-			return nil
-		}
-		password, err := ReadPassword("Enter password: ")
-		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to read password: %v\n", err)
-			return nil
-		}
-
-		return map[string]any{
-			uiaKeyType: mautrix.AuthTypePassword,
-			"identifier": map[string]any{
-				uiaKeyType: "m.id.user",
-				"user":     c.Matrix.UserID.String(),
-			},
-			"password": password,
-			"session":  uiResp.Session,
-		}
+		return handlePasswordFlow(c, uiResp.Session)
 	}
 
-	if _, err := fmt.Fprintf(os.Stderr, "Error: The server requested UIA flows that are not supported by this client.\n"); err != nil {
+	if _, err := fmt.Fprintf(stderr, "Error: The server requested UIA flows that are not supported by this client.\n"); err != nil {
 		return nil
 	}
 	return nil
+}
+
+func handleFallbackStage(c *Client, fallbackStage mautrix.AuthType, session string) any {
+	fallbackURL := fmt.Sprintf("%s/_matrix/client/v3/auth/%s/fallback/web?session=%s",
+		strings.TrimSuffix(c.Matrix.HomeserverURL.String(), "/"),
+		fallbackStage,
+		session)
+
+	if _, err := fmt.Fprintln(stdout, "\nThe server requires interactive authentication to proceed."); err != nil {
+		return nil
+	}
+	if _, err := fmt.Fprintf(stdout, "Please open the following link in your browser to confirm this action:\n\n%s\n\n", fallbackURL); err != nil {
+		return nil
+	}
+	if _, err := fmt.Fprint(stdout, "Press Enter here once you have successfully completed the authentication in your browser..."); err != nil {
+		return nil
+	}
+
+	reader := bufio.NewReader(stdin)
+	if _, err := reader.ReadString('\n'); err != nil {
+		return nil
+	}
+
+	return map[string]any{
+		uiaKeyType: fallbackStage,
+		"session":  session,
+	}
+}
+
+func handlePasswordFlow(c *Client, session string) any {
+	if _, err := fmt.Fprintln(stdout, "\nPassword confirmation is required for legacy servers."); err != nil {
+		return nil
+	}
+	password, err := readPassword("Enter password: ")
+	if err != nil {
+		if _, printErr := fmt.Fprintf(stderr, "failed to read password: %v\n", err); printErr != nil {
+			return nil
+		}
+		return nil
+	}
+
+	return map[string]any{
+		uiaKeyType: mautrix.AuthTypePassword,
+		"identifier": map[string]any{
+			uiaKeyType: "m.id.user",
+			"user":     c.Matrix.UserID.String(),
+		},
+		"password": password,
+		"session":  session,
+	}
 }

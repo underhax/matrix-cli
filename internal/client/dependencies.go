@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix"
@@ -21,6 +23,12 @@ import (
 func defaultVerifyWithRecoveryKey(ctx context.Context, mach *crypto.OlmMachine, recoveryKey string) error {
 	return wrapErr(mach.VerifyWithRecoveryKey(ctx, recoveryKey), "verify failed: %w")
 }
+
+var (
+	stdout io.Writer = os.Stdout
+	stderr io.Writer = os.Stderr
+	stdin  io.Reader = os.Stdin
+)
 
 var verifyWithRecoveryKey = defaultVerifyWithRecoveryKey
 
