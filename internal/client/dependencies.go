@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 
+	"golang.org/x/term"
+
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto"
@@ -28,6 +30,10 @@ var (
 	stdout io.Writer = os.Stdout
 	stderr io.Writer = os.Stderr
 	stdin  io.Reader = os.Stdin
+
+	termIsTerminal   = term.IsTerminal
+	termReadPassword = term.ReadPassword
+	getStdinFd       = func() int { return int(os.Stdin.Fd()) }
 )
 
 var verifyWithRecoveryKey = defaultVerifyWithRecoveryKey
