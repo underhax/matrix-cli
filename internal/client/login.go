@@ -21,7 +21,7 @@ func resolveHomeserver(ctx context.Context, server string) string {
 		return server
 	}
 
-	wellKnown, err := mautrix.DiscoverClientAPI(ctx, server)
+	wellKnown, err := discoverClientAPI(ctx, server)
 	if err == nil && wellKnown != nil && wellKnown.Homeserver.BaseURL != "" {
 		return wellKnown.Homeserver.BaseURL
 	}
@@ -34,7 +34,7 @@ func resolveHomeserver(ctx context.Context, server string) string {
 func Login(ctx context.Context, server, user, pass, deviceName, ssoCallbackPort string) (*config.Session, error) {
 	resolved := resolveHomeserver(ctx, server)
 
-	cli, err := mautrix.NewClient(resolved, "", "")
+	cli, err := mautrixNewClient(resolved, "", "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to init pre-login client: %w", err)
 	}
@@ -81,10 +81,10 @@ func Login(ctx context.Context, server, user, pass, deviceName, ssoCallbackPort 
 
 func ensureUserAndPass(user, pass string) (finalUser, finalPass string, err error) {
 	if user == "" {
-		if _, err := fmt.Fprint(os.Stdout, "Enter Matrix username: "); err != nil {
+		if _, err := fmt.Fprint(stdout, "Enter Matrix username: "); err != nil {
 			return "", "", fmt.Errorf("failed to prompt for username: %w", err)
 		}
-		reader := bufio.NewReader(os.Stdin)
+		reader := bufio.NewReader(stdin)
 		input, err := reader.ReadString('\n')
 		if err != nil {
 			return "", "", fmt.Errorf("failed to read username: %w", err)
@@ -101,37 +101,47 @@ func ensureUserAndPass(user, pass string) (finalUser, finalPass string, err erro
 	return user, pass, nil
 }
 
+type loginTokenHandler struct {
+	tokenChan chan<- string
+	errChan   chan<- error
+}
+
+func (h loginTokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("loginToken")
+	if token == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		if _, wErr := w.Write([]byte("Error: Missing loginToken in callback")); wErr != nil {
+			h.errChan <- fmt.Errorf("failed to write error response: %w", wErr)
+			return
+		}
+		h.errChan <- errors.New("missing loginToken in SSO callback")
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	if _, wErr := w.Write([]byte("Authentication successful. You can safely close this window.")); wErr != nil {
+		h.errChan <- fmt.Errorf("failed to write success response: %w", wErr)
+		return
+	}
+	h.tokenChan <- token
+}
+
+func serveSSOCallback(srv *http.Server, listener net.Listener, errChan chan<- error) {
+	if serveErr := srv.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		errChan <- serveErr
+	}
+}
+
 func startCallbackServer(ctx context.Context, ssoCallbackPort string, tokenChan chan<- string, errChan chan<- error) (*http.Server, int, error) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := r.URL.Query().Get("loginToken")
-		if token == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			if _, wErr := w.Write([]byte("Error: Missing loginToken in callback")); wErr != nil {
-				errChan <- fmt.Errorf("failed to write error response: %w", wErr)
-				return
-			}
-			errChan <- errors.New("missing loginToken in SSO callback")
-			return
-		}
-
-		w.WriteHeader(http.StatusOK)
-		if _, wErr := w.Write([]byte("Authentication successful. You can safely close this window.")); wErr != nil {
-			errChan <- fmt.Errorf("failed to write success response: %w", wErr)
-			return
-		}
-		tokenChan <- token
-	})
-
 	var listener net.Listener
 	var err error
-	lc := net.ListenConfig{}
 
 	if ssoCallbackPort != "" {
-		listener, err = lc.Listen(ctx, "tcp", "127.0.0.1:"+ssoCallbackPort)
+		listener, err = listenContext(ctx, "tcp", "127.0.0.1:"+ssoCallbackPort)
 	} else {
 		ports := []string{"8080", "8443", "8008", "0"}
 		for _, port := range ports {
-			listener, err = lc.Listen(ctx, "tcp", "127.0.0.1:"+port)
+			listener, err = listenContext(ctx, "tcp", "127.0.0.1:"+port)
 			if err == nil {
 				break
 			}
@@ -149,14 +159,13 @@ func startCallbackServer(ctx context.Context, ssoCallbackPort string, tokenChan 
 	port := addr.Port
 
 	srv := &http.Server{
-		Handler:           handler,
+		Handler: loginTokenHandler{
+			tokenChan: tokenChan,
+			errChan:   errChan,
+		},
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	go func() {
-		if serveErr := srv.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			errChan <- serveErr
-		}
-	}()
+	go serveSSOCallback(srv, listener, errChan)
 
 	return srv, port, nil
 }
@@ -164,19 +173,21 @@ func startCallbackServer(ctx context.Context, ssoCallbackPort string, tokenChan 
 func printSSOInstructions(serverURL, redirectURL string) error {
 	ssoURL := fmt.Sprintf("%s/_matrix/client/v3/login/sso/redirect?redirectUrl=%s", strings.TrimSuffix(serverURL, "/"), redirectURL)
 
-	if _, printErr := fmt.Fprintln(os.Stdout, "\nThe server supports SSO/OAuth authentication."); printErr != nil {
+	if _, printErr := fmt.Fprintln(stdout, "\nThe server supports SSO/OAuth authentication."); printErr != nil {
 		return fmt.Errorf("failed to print sso instructions: %w", printErr)
 	}
-	if _, printErr := fmt.Fprintf(os.Stdout, "Please open the following link in your browser to log in:\n\n%s\n\n", ssoURL); printErr != nil {
+	if _, printErr := fmt.Fprintf(stdout, "Please open the following link in your browser to log in:\n\n%s\n\n", ssoURL); printErr != nil {
 		return fmt.Errorf("failed to print sso url: %w", printErr)
 	}
-	if _, printErr := fmt.Fprintln(os.Stdout, "Waiting for browser callback..."); printErr != nil {
+	if _, printErr := fmt.Fprintln(stdout, "Waiting for browser callback..."); printErr != nil {
 		return fmt.Errorf("failed to print waiting message: %w", printErr)
 	}
 	return nil
 }
 
-func performSSOLogin(ctx context.Context, cli *mautrix.Client, serverURL, ssoCallbackPort, deviceName string) (*config.Session, error) {
+var performSSOLogin = defaultPerformSSOLogin
+
+func defaultPerformSSOLogin(ctx context.Context, cli *mautrix.Client, serverURL, ssoCallbackPort, deviceName string) (*config.Session, error) {
 	tokenChan := make(chan string, 1)
 	errChan := make(chan error, 1)
 

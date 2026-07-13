@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 
 	"golang.org/x/term"
@@ -233,3 +234,18 @@ func defaultJSONMarshalIndent(v any, prefix, indent string) ([]byte, error) {
 }
 
 var jsonMarshalIndent = defaultJSONMarshalIndent
+
+func defaultDiscoverClientAPI(ctx context.Context, server string) (*mautrix.ClientWellKnown, error) {
+	resp, err := mautrix.DiscoverClientAPI(ctx, server)
+	return resp, wrapErr(err, "discover client api failed: %w")
+}
+
+var discoverClientAPI = defaultDiscoverClientAPI
+
+func defaultListenContext(ctx context.Context, network, address string) (net.Listener, error) {
+	var lc net.ListenConfig
+	listener, err := lc.Listen(ctx, network, address)
+	return listener, wrapErr(err, "listen failed: %w")
+}
+
+var listenContext = defaultListenContext
