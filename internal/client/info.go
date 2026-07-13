@@ -2,10 +2,8 @@ package client
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"sync/atomic"
 
@@ -49,11 +47,11 @@ func (c *Client) Rooms(ctx context.Context, verbose bool) error {
 	}
 
 	if !verbose {
-		payload, marshalErr := json.MarshalIndent(resp, "", "  ")
+		payload, marshalErr := jsonMarshalIndent(resp, "", "  ")
 		if marshalErr != nil {
 			return fmt.Errorf("failed to marshal rooms: %w", marshalErr)
 		}
-		if _, writeErr := fmt.Fprintln(os.Stdout, string(payload)); writeErr != nil {
+		if _, writeErr := fmt.Fprintln(stdout, string(payload)); writeErr != nil {
 			return fmt.Errorf("stdout write error: %w", writeErr)
 		}
 		return nil
@@ -71,11 +69,11 @@ func (c *Client) Rooms(ctx context.Context, verbose bool) error {
 	}
 	stopSpinner()
 
-	payload, err := json.MarshalIndent(details, "", "  ")
+	payload, err := jsonMarshalIndent(details, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal detailed rooms: %w", err)
 	}
-	if _, err := fmt.Fprintln(os.Stdout, string(payload)); err != nil {
+	if _, err := fmt.Fprintln(stdout, string(payload)); err != nil {
 		return fmt.Errorf("stdout write error: %w", err)
 	}
 	return nil
@@ -123,7 +121,6 @@ func (c *Client) fetchDetailedRoomMetadata(ctx context.Context, roomID id.RoomID
 
 	var plEvt event.PowerLevelsEventContent
 	if err := c.Matrix.StateEvent(ctx, roomID, event.StatePowerLevels, "", &plEvt); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "warning: failed to fetch power levels for %s: %v\n", roomID, err)
 		plEvt.Users = make(map[id.UserID]int)
 	}
 	if createEvt != nil {
@@ -174,12 +171,12 @@ func (c *Client) RoomInfo(ctx context.Context, roomsStr string) error {
 	}
 	stopSpinner()
 
-	payload, err := json.MarshalIndent(results, "", "  ")
+	payload, err := jsonMarshalIndent(results, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal room details: %w", err)
 	}
 
-	if _, err := fmt.Fprintln(os.Stdout, string(payload)); err != nil {
+	if _, err := fmt.Fprintln(stdout, string(payload)); err != nil {
 		return fmt.Errorf("stdout write error: %w", err)
 	}
 	return nil
@@ -192,12 +189,12 @@ func (c *Client) Devices(ctx context.Context) error {
 		return fmt.Errorf("failed to fetch devices: %w", err)
 	}
 
-	payload, err := json.MarshalIndent(resp, "", "  ")
+	payload, err := jsonMarshalIndent(resp, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal devices: %w", err)
 	}
 
-	if _, err := fmt.Fprintln(os.Stdout, string(payload)); err != nil {
+	if _, err := fmt.Fprintln(stdout, string(payload)); err != nil {
 		return fmt.Errorf("stdout write error: %w", err)
 	}
 	return nil

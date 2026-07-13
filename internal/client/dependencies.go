@@ -225,3 +225,9 @@ func defaultJSONMarshal(v any) ([]byte, error) {
 }
 
 var jsonMarshal = defaultJSONMarshal
+
+func defaultJSONMarshalIndent(v any, prefix, indent string) ([]byte, error) {
+	return json.MarshalIndent(v, prefix, indent)
+}
+
+var jsonMarshalIndent = defaultJSONMarshalIndent
