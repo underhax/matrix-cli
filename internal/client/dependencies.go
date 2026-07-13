@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"time"
 
 	"golang.org/x/term"
 
@@ -47,6 +48,25 @@ func defaultExportCrossSigningKeys(mach *crypto.OlmMachine) crypto.CrossSigningS
 }
 
 var exportCrossSigningKeys = defaultExportCrossSigningKeys
+
+func defaultImportCrossSigningKeys(mach *crypto.OlmMachine, keys crypto.CrossSigningSeeds) error {
+	return wrapErr(mach.ImportCrossSigningKeys(keys), "import failed: %w")
+}
+
+var importCrossSigningKeys = defaultImportCrossSigningKeys
+
+func defaultCryptoStoreGetSecret(ctx context.Context, mach *crypto.OlmMachine, secretID id.Secret) (string, error) {
+	val, err := mach.CryptoStore.GetSecret(ctx, secretID)
+	return val, wrapErr(err, "get secret failed: %w")
+}
+
+var cryptoStoreGetSecret = defaultCryptoStoreGetSecret
+
+func defaultCryptoStorePutSecret(ctx context.Context, mach *crypto.OlmMachine, secretID id.Secret, secret string) error {
+	return wrapErr(mach.CryptoStore.PutSecret(ctx, secretID, secret), "put secret failed: %w")
+}
+
+var cryptoStorePutSecret = defaultCryptoStorePutSecret
 
 func defaultGenerateAndUploadCrossSigningKeys(ctx context.Context, mach *crypto.OlmMachine, cb func(*mautrix.RespUserInteractive) any, masterKey string) (string, *crypto.CrossSigningKeysCache, error) {
 	key, cache, err := mach.GenerateAndUploadCrossSigningKeys(ctx, cb, masterKey)
@@ -214,6 +234,15 @@ func defaultGetSecret(ctx context.Context, mach *crypto.OlmMachine, name id.Secr
 	return secret, wrapErr(err, "get secret failed: %w")
 }
 
+var getOrRequestSecret = defaultGetOrRequestSecret
+
+func defaultGetOrRequestSecret(ctx context.Context, mach *crypto.OlmMachine, name id.Secret, cb func(string) (bool, error), timeout time.Duration) error {
+	if mach == nil {
+		return errors.New("machine is nil")
+	}
+	return wrapErr(mach.GetOrRequestSecret(ctx, name, cb, timeout), "get or request secret failed: %w")
+}
+
 var sendEncryptedToDevice = defaultSendEncryptedToDevice
 
 func defaultSendEncryptedToDevice(ctx context.Context, mach *crypto.OlmMachine, device *id.Device, evtType event.Type, content event.Content) error {
@@ -249,3 +278,12 @@ func defaultListenContext(ctx context.Context, network, address string) (net.Lis
 }
 
 var listenContext = defaultListenContext
+
+func defaultRowsClose(rows dbutil.Rows) error {
+	if rows == nil {
+		return nil
+	}
+	return wrapErr(rows.Close(), "failed to close rows: %w")
+}
+
+var rowsClose = defaultRowsClose

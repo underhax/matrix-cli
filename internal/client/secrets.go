@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"maunium.net/go/mautrix/crypto"
@@ -29,22 +28,26 @@ func (c *Client) requestSecrets(ctx context.Context) {
 	_, _ = fmt.Fprintf(os.Stderr, "Requesting cross-signing keys from trusted devices...\n")
 
 	go func() {
+		mach := getOlmMachine(c)
+		if mach == nil {
+			return
+		}
 		var master, self, user, backupKey string
 		var errM, errS, errU, errB error
 
-		errM = c.Crypto.Machine().GetOrRequestSecret(ctx, id.SecretXSMaster, func(s string) (bool, error) {
+		errM = getOrRequestSecret(ctx, mach, id.SecretXSMaster, func(s string) (bool, error) {
 			master = s
 			return true, nil
 		}, 15*time.Second)
-		errS = c.Crypto.Machine().GetOrRequestSecret(ctx, id.SecretXSSelfSigning, func(s string) (bool, error) {
+		errS = getOrRequestSecret(ctx, mach, id.SecretXSSelfSigning, func(s string) (bool, error) {
 			self = s
 			return true, nil
 		}, 15*time.Second)
-		errU = c.Crypto.Machine().GetOrRequestSecret(ctx, id.SecretXSUserSigning, func(s string) (bool, error) {
+		errU = getOrRequestSecret(ctx, mach, id.SecretXSUserSigning, func(s string) (bool, error) {
 			user = s
 			return true, nil
 		}, 15*time.Second)
-		errB = c.Crypto.Machine().GetOrRequestSecret(ctx, id.SecretMegolmBackupV1, func(s string) (bool, error) {
+		errB = getOrRequestSecret(ctx, mach, id.SecretMegolmBackupV1, func(s string) (bool, error) {
 			backupKey = s
 			return true, nil
 		}, 15*time.Second)
@@ -63,10 +66,10 @@ func (c *Client) requestSecrets(ctx context.Context) {
 		}
 
 		_, _ = fmt.Fprintf(os.Stderr, "Received cross-signing keys. Saving to local store...\n")
-		c.loadSecrets(ctx)
+		doLoadSecrets(ctx, c)
 
-		if c.Crypto.Machine().CrossSigningKeys != nil {
-			if err := c.Crypto.Machine().SignOwnDevice(ctx, c.Crypto.Machine().OwnIdentity()); err != nil {
+		if mach.CrossSigningKeys != nil {
+			if err := signOwnDevice(ctx, mach, ownIdentity(mach)); err != nil {
 				_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to sign own device after receiving keys: %v\n", err)
 			} else {
 				_, _ = fmt.Fprintf(os.Stderr, "Successfully signed own device. You are now fully verified.\n")
@@ -76,10 +79,13 @@ func (c *Client) requestSecrets(ctx context.Context) {
 }
 
 func (c *Client) loadSecrets(ctx context.Context) {
-	mach := c.Crypto.Machine()
-	master, err1 := mach.CryptoStore.GetSecret(ctx, id.SecretXSMaster)
-	self, err2 := mach.CryptoStore.GetSecret(ctx, id.SecretXSSelfSigning)
-	user, err3 := mach.CryptoStore.GetSecret(ctx, id.SecretXSUserSigning)
+	mach := getOlmMachine(c)
+	if mach == nil {
+		return
+	}
+	master, err1 := cryptoStoreGetSecret(ctx, mach, id.SecretXSMaster)
+	self, err2 := cryptoStoreGetSecret(ctx, mach, id.SecretXSSelfSigning)
+	user, err3 := cryptoStoreGetSecret(ctx, mach, id.SecretXSUserSigning)
 
 	if err1 != nil || err2 != nil || err3 != nil || master == "" || self == "" || user == "" {
 		return
@@ -93,7 +99,7 @@ func (c *Client) loadSecrets(ctx context.Context) {
 		return
 	}
 
-	err := mach.ImportCrossSigningKeys(crypto.CrossSigningSeeds{
+	err := importCrossSigningKeys(mach, crypto.CrossSigningSeeds{
 		MasterKey:      decMaster,
 		SelfSigningKey: decSelf,
 		UserSigningKey: decUser,
@@ -106,21 +112,28 @@ func (c *Client) loadSecrets(ctx context.Context) {
 }
 
 func (c *Client) saveCrossSigningKeys(ctx context.Context, keys crypto.CrossSigningSeeds) {
-	mach := c.Crypto.Machine()
+	mach := getOlmMachine(c)
+	if mach == nil {
+		return
+	}
 
-	if err1 := mach.CryptoStore.PutSecret(ctx, id.SecretXSMaster, base64.RawStdEncoding.EncodeToString(keys.MasterKey)); err1 != nil {
+	if err1 := cryptoStorePutSecret(ctx, mach, id.SecretXSMaster, base64.RawStdEncoding.EncodeToString(keys.MasterKey)); err1 != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "warning: failed to save master key: %v\n", err1)
 	}
-	if err2 := mach.CryptoStore.PutSecret(ctx, id.SecretXSSelfSigning, base64.RawStdEncoding.EncodeToString(keys.SelfSigningKey)); err2 != nil {
+	if err2 := cryptoStorePutSecret(ctx, mach, id.SecretXSSelfSigning, base64.RawStdEncoding.EncodeToString(keys.SelfSigningKey)); err2 != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "warning: failed to save self-signing key: %v\n", err2)
 	}
-	if err3 := mach.CryptoStore.PutSecret(ctx, id.SecretXSUserSigning, base64.RawStdEncoding.EncodeToString(keys.UserSigningKey)); err3 != nil {
+	if err3 := cryptoStorePutSecret(ctx, mach, id.SecretXSUserSigning, base64.RawStdEncoding.EncodeToString(keys.UserSigningKey)); err3 != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "warning: failed to save user-signing key: %v\n", err3)
 	}
 }
 
 func (c *Client) migrateSecrets(ctx context.Context) {
-	sqlStore, ok := c.Crypto.Machine().CryptoStore.(*crypto.SQLCryptoStore)
+	mach := getOlmMachine(c)
+	if mach == nil {
+		return
+	}
+	sqlStore, ok := mach.CryptoStore.(*crypto.SQLCryptoStore)
 	if !ok {
 		return
 	}
@@ -129,7 +142,7 @@ func (c *Client) migrateSecrets(ctx context.Context) {
 		return
 	}
 	defer func() {
-		if err := rows.Close(); err != nil {
+		if err := rowsClose(rows); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "warning: failed to close rows: %v\n", err)
 		}
 	}()
@@ -138,7 +151,7 @@ func (c *Client) migrateSecrets(ctx context.Context) {
 	for rows.Next() {
 		var name, secret string
 		if err := rows.Scan(&name, &secret); err == nil {
-			if strings.HasSuffix(secret, "=") {
+			if secret != "" && secret[len(secret)-1] == '=' {
 				if dec, err := base64.StdEncoding.DecodeString(secret); err == nil {
 					updates[name] = base64.RawStdEncoding.EncodeToString(dec)
 				}
