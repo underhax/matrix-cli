@@ -2,10 +2,8 @@ package client
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"maunium.net/go/mautrix"
@@ -40,9 +38,12 @@ func (c *Client) Send(ctx context.Context, roomsStr, message string) error {
 		results = append(results, res)
 	}
 
-	if payload, err := json.Marshal(results); err == nil {
-		if _, writeErr := fmt.Fprintln(os.Stdout, string(payload)); writeErr != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to write json: %v\n", writeErr)
+	if payload, err := jsonMarshal(results); err == nil {
+		if _, writeErr := fmt.Fprintln(stdout, string(payload)); writeErr != nil {
+			if _, printErr := fmt.Fprintf(stderr, "failed to write json: %v\n", writeErr); printErr != nil {
+				return fmt.Errorf("failed to output result: %w", writeErr)
+			}
+			return fmt.Errorf("failed to output result: %w", writeErr)
 		}
 	}
 

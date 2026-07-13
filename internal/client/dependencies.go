@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -218,3 +219,9 @@ func defaultSendEncryptedToDevice(ctx context.Context, mach *crypto.OlmMachine, 
 	}
 	return wrapErr(mach.SendEncryptedToDevice(ctx, device, evtType, content), "send encrypted failed: %w")
 }
+
+func defaultJSONMarshal(v any) ([]byte, error) {
+	return json.Marshal(v)
+}
+
+var jsonMarshal = defaultJSONMarshal
