@@ -34,8 +34,10 @@ var (
 
 	termIsTerminal   = term.IsTerminal
 	termReadPassword = term.ReadPassword
-	getStdinFd       = func() int { return int(os.Stdin.Fd()) }
+	getStdinFd       = defaultGetStdinFd
 )
+
+func defaultGetStdinFd() int { return int(os.Stdin.Fd()) }
 
 var verifyWithRecoveryKey = defaultVerifyWithRecoveryKey
 

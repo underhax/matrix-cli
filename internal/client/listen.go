@@ -2,10 +2,8 @@ package client
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"maunium.net/go/mautrix"
@@ -31,17 +29,23 @@ func (c *Client) Listen(_ context.Context, roomsStr string) error {
 			return
 		}
 
-		payload, err := json.Marshal(evt)
+		payload, err := jsonMarshal(evt)
 		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to marshal event %s: %v\n", evt.ID, err)
+			if _, writeErr := fmt.Fprintf(stderr, "failed to marshal event %s: %v\n", evt.ID, err); writeErr != nil {
+				return
+			}
 			return
 		}
-		if _, err := fmt.Fprintln(os.Stdout, string(payload)); err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "stdout write error: %v\n", err)
+		if _, err := fmt.Fprintln(stdout, string(payload)); err != nil {
+			if _, writeErr := fmt.Fprintf(stderr, "stdout write error: %v\n", err); writeErr != nil {
+				return
+			}
 		}
 	})
 
-	_, _ = fmt.Fprintln(os.Stderr, "starting infinite sync loop...")
+	if _, err := fmt.Fprintln(stderr, "starting infinite sync loop..."); err != nil {
+		return fmt.Errorf("failed to write to stderr: %w", err)
+	}
 
 	if err := c.Matrix.Sync(); err != nil {
 		return fmt.Errorf("sync loop terminated: %w", err)
