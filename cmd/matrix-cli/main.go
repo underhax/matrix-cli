@@ -21,6 +21,7 @@ import (
 )
 
 var (
+	AppVersion            = "dev"
 	osExit                = os.Exit
 	runtimeGOOS           = runtime.GOOS
 	filepathAbs           = filepath.Abs

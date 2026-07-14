@@ -76,7 +76,7 @@ func printUsage(modeVal string) {
 }
 
 func printGlobalUsage() {
-	fmt.Fprintf(os.Stderr, "matrix-cli - A headless Matrix client\n\n")
+	fmt.Fprintf(os.Stderr, "matrix-cli - A headless Matrix client (%s)\n\n", AppVersion)
 	fmt.Fprintf(os.Stderr, "Usage:\n")
 	fmt.Fprintf(os.Stderr, "  matrix-cli --mode <mode> [options]\n\n")
 	fmt.Fprintf(os.Stderr, "Modes:\n")
