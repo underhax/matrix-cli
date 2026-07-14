@@ -13,13 +13,15 @@ import (
 
 	"github.com/underhax/matrix-cli/internal/client"
 	"github.com/underhax/matrix-cli/internal/config"
+	"github.com/underhax/matrix-cli/internal/logger"
 
 	"maunium.net/go/mautrix"
 )
 
 func TestHandleOperations_InvalidSession(t *testing.T) {
 	ctx := context.Background()
-	err := handleOperations(ctx, modeListen, "", "", "", false, "", false, "nonexistent.json", ":memory:", "pickle.key")
+	nopLog := logger.Nop()
+	err := handleOperations(ctx, &nopLog, modeListen, "", "", "", false, "", false, "nonexistent.json", ":memory:", "pickle.key")
 	if err == nil || !strings.Contains(err.Error(), "failed to load session") {
 		t.Fatalf("expected failed to load session error, got %v", err)
 	}
@@ -35,7 +37,8 @@ func TestHandleOperations_InvalidDB(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = handleOperations(ctx, modeListen, "", "", "", false, "", false, sessFile, "/invalid/db/path", "pickle.key")
+	nopLog := logger.Nop()
+	err = handleOperations(ctx, &nopLog, modeListen, "", "", "", false, "", false, sessFile, "/invalid/db/path", "pickle.key")
 	if err == nil || !strings.Contains(err.Error(), "database error") {
 		t.Fatalf("expected database error, got %v", err)
 	}
@@ -51,7 +54,8 @@ func TestHandleOperations_InvalidClient(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = handleOperations(ctx, modeListen, "", "", "", false, "", false, sessFile, ":memory:", filepath.Join(tmp, "p.key"))
+	nopLog := logger.Nop()
+	err = handleOperations(ctx, &nopLog, modeListen, "", "", "", false, "", false, sessFile, ":memory:", filepath.Join(tmp, "p.key"))
 	if err == nil || !strings.Contains(err.Error(), "client initialization failed") {
 		t.Fatalf("expected client initialization error, got %v", err)
 	}
@@ -73,7 +77,8 @@ func TestHandleOperations_DBCloseError(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = handleOperations(ctx, modeListen, "", "", "", false, "", false, sessFile, ":memory:", filepath.Join(tmp, "p.key"))
+	nopLog := logger.Nop()
+	err = handleOperations(ctx, &nopLog, modeListen, "", "", "", false, "", false, sessFile, ":memory:", filepath.Join(tmp, "p.key"))
 	if err == nil || !strings.Contains(err.Error(), "client initialization failed") {
 		t.Fatalf("expected client initialization error, got %v", err)
 	}
@@ -105,7 +110,8 @@ func TestHandleLogout(t *testing.T) {
 	}
 	stdout = devNull
 
-	err = handleOperations(ctx, modeLogout, "", "", "", false, "", false, sessFile, dbFile, pickleFile)
+	nopLog := logger.Nop()
+	err = handleOperations(ctx, &nopLog, modeLogout, "", "", "", false, "", false, sessFile, dbFile, pickleFile)
 	if err != nil {
 		t.Fatalf("expected logout to succeed, got %v", err)
 	}
@@ -157,8 +163,9 @@ func TestHandleLogout_Errors(t *testing.T) {
 	}
 
 	ctx := context.Background()
+	nopLog := logger.Nop()
 
-	err = handleOperations(ctx, modeLogout, "", "", "", false, "", false, sessFile, dbFile, pickleFile)
+	err = handleOperations(ctx, &nopLog, modeLogout, "", "", "", false, "", false, sessFile, dbFile, pickleFile)
 	if err != nil {
 		t.Fatalf("expected logout to succeed despite mock errors, got %v", err)
 	}
@@ -195,7 +202,8 @@ func TestHandleOperations_Success(t *testing.T) {
 	}
 	stdout = devNull
 
-	err = handleOperations(ctx, modeSend, "", "", "", false, "", false, sessFile, dbFile, pickleFile)
+	nopLog := logger.Nop()
+	err = handleOperations(ctx, &nopLog, modeSend, "", "", "", false, "", false, sessFile, dbFile, pickleFile)
 	if err == nil || err.Error() != "--rooms and --message are required for send mode" {
 		t.Errorf("expected send validation error from executeMode, got %v", err)
 	}

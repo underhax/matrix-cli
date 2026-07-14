@@ -26,68 +26,77 @@ func (c *Client) registerStateHooks() {
 var secretRequestDelay = 2 * time.Second
 
 func (c *Client) onSecretRequest(ctx context.Context, evt *event.Event) {
-	if req, ok := evt.Content.Parsed.(*event.SecretRequestEventContent); ok {
-		if mach := getCryptoMachine(c.Crypto); mach != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Received secret request from %s for %s\n", evt.Sender, req.Name)
-			bgCtx := context.WithoutCancel(ctx)
-			go func() {
-				time.Sleep(secretRequestDelay)
-				if DebugMode {
-					_, _ = fmt.Fprintf(os.Stderr, "[DEBUG SECRET] Processing request %s from %s after delay...\n", req.Name, evt.Sender)
-				}
-				doDebugHandleSecretRequest(bgCtx, mach, evt.Sender, req)
-			}()
-		}
+	req, ok := evt.Content.Parsed.(*event.SecretRequestEventContent)
+	if !ok {
+		return
 	}
+	mach := getCryptoMachine(c.Crypto)
+	if mach == nil {
+		return
+	}
+
+	if req.Action == event.SecretRequestCancellation {
+		c.Log.Debug().Str("sender", string(evt.Sender)).Str("target_device_id", string(req.RequestingDeviceID)).Str("request_id", req.RequestID).Msg("Received secret request cancellation")
+		return
+	}
+	c.Log.Debug().Str("sender", string(evt.Sender)).Str("target_device_id", string(req.RequestingDeviceID)).Str("request_id", req.RequestID).Str("secret", string(req.Name)).Msg("Received secret request")
+
+	bgCtx := context.WithoutCancel(ctx)
+	go func() {
+		time.Sleep(secretRequestDelay)
+		c.Log.Debug().Str("sender", string(evt.Sender)).Str("target_device_id", string(req.RequestingDeviceID)).Str("secret", string(req.Name)).Msg("Processing request after delay")
+		doDebugHandleSecretRequest(bgCtx, c, mach, evt.Sender, req)
+	}()
 }
 
-var doDebugHandleSecretRequest = debugHandleSecretRequest
+var doDebugHandleSecretRequest = defaultDebugHandleSecretRequest
 
-func debugHandleSecretRequest(ctx context.Context, mach *crypto.OlmMachine, userID id.UserID, content *event.SecretRequestEventContent) {
+func defaultDebugHandleSecretRequest(ctx context.Context, c *Client, mach *crypto.OlmMachine, userID id.UserID, content *event.SecretRequestEventContent) {
 	if content.Action != event.SecretRequestRequest {
 		return
 	}
 
-	debugLog := func(format string, args ...any) {
-		if DebugMode {
-			_, _ = fmt.Fprintf(os.Stderr, format, args...)
-		}
-	}
+	ownDeviceID := string(mach.Client.DeviceID)
+	targetDeviceID := string(content.RequestingDeviceID)
 
-	if userID != mach.Client.UserID || content.RequestingDeviceID == "" {
-		debugLog("[DEBUG SECRET] Ignored: not from own device or empty device ID\n")
+	if userID != mach.Client.UserID || targetDeviceID == "" {
+		c.Log.Debug().Str("own_device_id", ownDeviceID).Str("target_device_id", targetDeviceID).Msg("Ignored: not from own device or empty device ID")
 		return
 	}
-	if content.RequestingDeviceID == mach.Client.DeviceID {
-		debugLog("[DEBUG SECRET] Ignored: request from this device\n")
+	if targetDeviceID == ownDeviceID {
+		c.Log.Debug().Str("own_device_id", ownDeviceID).Str("target_device_id", targetDeviceID).Msg("Ignored: request from this device")
 		return
 	}
 
 	device, err := getOrFetchDevice(ctx, mach, userID, content.RequestingDeviceID)
 	if err != nil {
-		debugLog("[DEBUG SECRET] Failed to fetch device %s: %v\n", content.RequestingDeviceID, err)
+		c.Log.Debug().Err(err).Str("own_device_id", ownDeviceID).Str("target_device_id", targetDeviceID).Msg("Failed to fetch device")
 		return
 	}
 	trust, err := resolveTrustContext(ctx, mach, device)
 	if err != nil {
-		debugLog("[DEBUG SECRET] Failed to resolve trust for %s: %v\n", content.RequestingDeviceID, err)
+		c.Log.Debug().Err(err).Str("own_device_id", ownDeviceID).Str("target_device_id", targetDeviceID).Msg("Failed to resolve trust")
 		return
 	}
 	if trust < id.TrustStateCrossSignedVerified {
-		debugLog("[DEBUG SECRET] Device %s is not verified (trust=%d), ignoring\n", content.RequestingDeviceID, trust)
+		c.Log.Debug().Int("trust", int(trust)).Str("own_device_id", ownDeviceID).Str("target_device_id", targetDeviceID).Msg("Device is not verified, ignoring")
 		return
 	}
 
 	secret, err := getSecret(ctx, mach, content.Name)
 	if err != nil {
-		debugLog("[DEBUG SECRET] Failed to get secret %s from store: %v\n", content.Name, err)
+		c.Log.Debug().Err(err).Str("secret", string(content.Name)).Str("own_device_id", ownDeviceID).Str("target_device_id", targetDeviceID).Msg("Failed to get secret from store")
 		return
 	} else if secret == "" {
-		debugLog("[DEBUG SECRET] Secret %s is empty in store\n", content.Name)
+		c.Log.Debug().Str("secret", string(content.Name)).Str("own_device_id", ownDeviceID).Str("target_device_id", targetDeviceID).Msg("Secret is empty in store")
 		return
 	}
 
-	debugLog("[DEBUG SECRET] SENDING secret %s to device %s\n", content.Name, content.RequestingDeviceID)
+	c.Log.Debug().
+		Str("to", targetDeviceID).
+		Str("from", ownDeviceID).
+		Str("secret", string(content.Name)).
+		Msg("SENDING secret to device")
 	err = sendEncryptedToDevice(ctx, mach, device, event.ToDeviceSecretSend, event.Content{
 		Parsed: &event.SecretSendEventContent{
 			RequestID: content.RequestID,
@@ -95,7 +104,7 @@ func debugHandleSecretRequest(ctx context.Context, mach *crypto.OlmMachine, user
 		},
 	})
 	if err != nil {
-		debugLog("[DEBUG SECRET] Failed to send encrypted secret: %v\n", err)
+		c.Log.Debug().Err(err).Str("own_device_id", ownDeviceID).Str("target_device_id", targetDeviceID).Msg("Failed to send encrypted secret")
 	}
 }
 

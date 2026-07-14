@@ -3,7 +3,6 @@ package client
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -26,17 +25,17 @@ func (c *Client) refreshCrossSigningKeys(ctx context.Context, userID id.UserID) 
 	mach := c.Crypto.Machine()
 	if sqlStore, ok := mach.CryptoStore.(*crypto.SQLCryptoStore); ok {
 		if _, err := sqlStore.DB.Exec(ctx, "DELETE FROM crypto_cross_signing_keys WHERE user_id=$1", userID); err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "warning: failed to clean old keys: %v\n", err)
+			c.Log.Debug().Err(err).Msg("failed to clean old keys")
 		}
 		if _, err := sqlStore.DB.Exec(ctx, "DELETE FROM crypto_devices WHERE user_id=$1", userID); err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "warning: failed to clean old devices: %v\n", err)
+			c.Log.Debug().Err(err).Msg("failed to clean old devices")
 		}
 		if _, err := sqlStore.DB.Exec(ctx, "DELETE FROM crypto_cross_signing_signatures WHERE user_id=$1 OR sign_user_id=$1", userID); err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "warning: failed to clean old signatures: %v\n", err)
+			c.Log.Debug().Err(err).Msg("failed to clean old signatures")
 		}
 	}
 	if _, err := mach.FetchKeys(ctx, []id.UserID{userID}, true); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "warning: failed to fetch keys: %v\n", err)
+		c.Log.Debug().Err(err).Msg("failed to fetch keys")
 	}
 }
 
@@ -100,33 +99,11 @@ func (h *VerificationHandler) VerificationReady(ctx context.Context, txnID id.Ve
 // and logs the cancellation reason for operator diagnostics.
 func (h *VerificationHandler) VerificationCancelled(_ context.Context, txnID id.VerificationTransactionID, code event.VerificationCancelCode, reason string) {
 	_, _ = fmt.Fprintf(os.Stderr, "\nVerification %s cancelled: %s (%s)\n", txnID, reason, code)
-
-	out := map[string]string{
-		jsonKeyStatus: statusCancelled,
-		"txn_id":      string(txnID),
-		"reason":      reason,
-		"code":        string(code),
-	}
-	if payload, err := json.Marshal(out); err == nil {
-		if _, writeErr := fmt.Fprintln(os.Stdout, string(payload)); writeErr != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to write json: %v\n", writeErr)
-		}
-	}
 }
 
 // VerificationDone is invoked upon successful completion of the SAS key verification exchange.
 func (h *VerificationHandler) VerificationDone(ctx context.Context, txnID id.VerificationTransactionID, _ event.VerificationMethod) {
-	_, _ = fmt.Fprintf(os.Stderr, "\nVerification %s done successfully!\n", txnID)
-
-	out := map[string]string{
-		jsonKeyStatus: statusSuccess,
-		"txn_id":      string(txnID),
-	}
-	if payload, err := json.Marshal(out); err == nil {
-		if _, writeErr := fmt.Fprintln(os.Stdout, string(payload)); writeErr != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to write json: %v\n", writeErr)
-		}
-	}
+	h.client.Log.Debug().Str("txn_id", string(txnID)).Msg("Verification done successfully!")
 	bgCtx := context.WithoutCancel(ctx)
 	h.client.requestSecrets(bgCtx)
 }

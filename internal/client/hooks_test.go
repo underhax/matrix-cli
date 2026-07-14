@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/underhax/matrix-cli/internal/logger"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto"
 	"maunium.net/go/mautrix/crypto/cryptohelper"
@@ -185,12 +186,8 @@ func TestOnSecretRequest(_ *testing.T) {
 	origDoDebugHandleSecretRequest := doDebugHandleSecretRequest
 	defer func() { doDebugHandleSecretRequest = origDoDebugHandleSecretRequest }()
 
-	origDebugMode := DebugMode
-	DebugMode = true
-	defer func() { DebugMode = origDebugMode }()
-
 	called := make(chan struct{})
-	doDebugHandleSecretRequest = func(_ context.Context, _ *crypto.OlmMachine, _ id.UserID, _ *event.SecretRequestEventContent) {
+	doDebugHandleSecretRequest = func(_ context.Context, _ *Client, _ *crypto.OlmMachine, _ id.UserID, _ *event.SecretRequestEventContent) {
 		close(called)
 	}
 
@@ -222,31 +219,29 @@ func TestDebugHandleSecretRequest(_ *testing.T) {
 	origSendEncrypted := sendEncryptedToDevice
 	defer func() { sendEncryptedToDevice = origSendEncrypted }()
 
-	origDebugMode := DebugMode
-	DebugMode = true
-	defer func() { DebugMode = origDebugMode }()
+	c := &Client{Log: logger.Nop()}
 
 	mach.Client.UserID = "@user:test1.example.com"
 	req.Action = event.SecretRequestCancellation
-	debugHandleSecretRequest(ctx, mach, "@user:test1.example.com", req)
+	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test1.example.com", req)
 	req.Action = event.SecretRequestRequest
 
 	mach.Client.UserID = "@user:test2.example.com"
-	debugHandleSecretRequest(ctx, mach, "@other:test2.example.com", req)
+	defaultDebugHandleSecretRequest(ctx, c, mach, "@other:test2.example.com", req)
 
 	req.RequestingDeviceID = ""
-	debugHandleSecretRequest(ctx, mach, "@user:test2.example.com", req)
+	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test2.example.com", req)
 
 	mach.Client.UserID = "@user:test3.example.com"
 	req.RequestingDeviceID = "mydevice"
-	debugHandleSecretRequest(ctx, mach, "@user:test3.example.com", req)
+	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test3.example.com", req)
 	req.RequestingDeviceID = "device2"
 
 	mach.Client.UserID = "@user:test4.example.com"
 	getOrFetchDevice = func(_ context.Context, _ *crypto.OlmMachine, _ id.UserID, _ id.DeviceID) (*id.Device, error) {
 		return nil, errors.New("device error")
 	}
-	debugHandleSecretRequest(ctx, mach, "@user:test4.example.com", req)
+	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test4.example.com", req)
 
 	mach.Client.UserID = "@user:test5.example.com"
 	getOrFetchDevice = func(_ context.Context, _ *crypto.OlmMachine, _ id.UserID, _ id.DeviceID) (*id.Device, error) {
@@ -255,13 +250,13 @@ func TestDebugHandleSecretRequest(_ *testing.T) {
 	resolveTrustContext = func(_ context.Context, _ *crypto.OlmMachine, _ *id.Device) (id.TrustState, error) {
 		return 0, errors.New("trust error")
 	}
-	debugHandleSecretRequest(ctx, mach, "@user:test5.example.com", req)
+	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test5.example.com", req)
 
 	mach.Client.UserID = "@user:test6.example.com"
 	resolveTrustContext = func(_ context.Context, _ *crypto.OlmMachine, _ *id.Device) (id.TrustState, error) {
 		return id.TrustStateCrossSignedUntrusted, nil
 	}
-	debugHandleSecretRequest(ctx, mach, "@user:test6.example.com", req)
+	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test6.example.com", req)
 
 	mach.Client.UserID = "@user:test7.example.com"
 	resolveTrustContext = func(_ context.Context, _ *crypto.OlmMachine, _ *id.Device) (id.TrustState, error) {
@@ -270,13 +265,13 @@ func TestDebugHandleSecretRequest(_ *testing.T) {
 	getSecret = func(_ context.Context, _ *crypto.OlmMachine, _ id.Secret) (string, error) {
 		return "", errors.New("secret error")
 	}
-	debugHandleSecretRequest(ctx, mach, "@user:test7.example.com", req)
+	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test7.example.com", req)
 
 	mach.Client.UserID = "@user:test8.example.com"
 	getSecret = func(_ context.Context, _ *crypto.OlmMachine, _ id.Secret) (string, error) {
 		return "", nil
 	}
-	debugHandleSecretRequest(ctx, mach, "@user:test8.example.com", req)
+	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test8.example.com", req)
 
 	mach.Client.UserID = "@user:test9.example.com"
 	getSecret = func(_ context.Context, _ *crypto.OlmMachine, _ id.Secret) (string, error) {
@@ -285,11 +280,11 @@ func TestDebugHandleSecretRequest(_ *testing.T) {
 	sendEncryptedToDevice = func(_ context.Context, _ *crypto.OlmMachine, _ *id.Device, _ event.Type, _ event.Content) error {
 		return errors.New("send error")
 	}
-	debugHandleSecretRequest(ctx, mach, "@user:test9.example.com", req)
+	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test9.example.com", req)
 
 	mach.Client.UserID = "@user:test10.example.com"
 	sendEncryptedToDevice = func(_ context.Context, _ *crypto.OlmMachine, _ *id.Device, _ event.Type, _ event.Content) error {
 		return nil
 	}
-	debugHandleSecretRequest(ctx, mach, "@user:test10.example.com", req)
+	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test10.example.com", req)
 }

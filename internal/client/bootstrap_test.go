@@ -46,7 +46,7 @@ func TestBootstrapRecoveryKey(t *testing.T) {
 	c := &Client{}
 	ctx := context.Background()
 
-	getOlmMachine = func(_ *Client) *crypto.OlmMachine { return nil }
+	getOlmMachine = func(_ *Client) *crypto.OlmMachine { return &crypto.OlmMachine{} }
 	defer func() { getOlmMachine = defaultGetOlmMachine }()
 
 	verifyWithRecoveryKey = func(_ context.Context, _ *crypto.OlmMachine, _ string) error {
@@ -101,7 +101,7 @@ func TestBootstrapNewKeys(t *testing.T) {
 	c := &Client{}
 	ctx := context.Background()
 
-	getOlmMachine = func(_ *Client) *crypto.OlmMachine { return nil }
+	getOlmMachine = func(_ *Client) *crypto.OlmMachine { return &crypto.OlmMachine{} }
 	defer func() { getOlmMachine = defaultGetOlmMachine }()
 
 	generateAndUploadCrossSigningKeys = func(_ context.Context, _ *crypto.OlmMachine, _ func(*mautrix.RespUserInteractive) any, _ string) (string, *crypto.CrossSigningKeysCache, error) {
@@ -175,7 +175,7 @@ func TestBootstrap(t *testing.T) {
 	c := &Client{}
 	ctx := context.Background()
 
-	getOlmMachine = func(_ *Client) *crypto.OlmMachine { return nil }
+	getOlmMachine = func(_ *Client) *crypto.OlmMachine { return &crypto.OlmMachine{} }
 	verifyWithRecoveryKey = func(_ context.Context, _ *crypto.OlmMachine, _ string) error { return nil }
 	exportCrossSigningKeys = func(_ *crypto.OlmMachine) crypto.CrossSigningSeeds { return crypto.CrossSigningSeeds{} }
 	doSaveCrossSigningKeys = func(_ context.Context, _ *Client, _ crypto.CrossSigningSeeds) {}
@@ -245,7 +245,7 @@ func TestSetupMegolmBackup(t *testing.T) {
 	c := &Client{}
 	ctx := context.Background()
 
-	getOlmMachine = func(_ *Client) *crypto.OlmMachine { return nil }
+	getOlmMachine = func(_ *Client) *crypto.OlmMachine { return &crypto.OlmMachine{} }
 	defer func() { getOlmMachine = defaultGetOlmMachine }()
 
 	ssssGetDefaultKeyData = func(_ context.Context, _ *crypto.OlmMachine) (string, *ssss.KeyMetadata, error) {

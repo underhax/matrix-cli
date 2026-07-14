@@ -113,6 +113,9 @@ func defaultSaveCrossSigningKeys(ctx context.Context, c *Client, keys crypto.Cro
 var doSaveCrossSigningKeys = defaultSaveCrossSigningKeys
 
 func defaultGetOlmMachine(c *Client) *crypto.OlmMachine {
+	if c.Crypto == nil {
+		return nil
+	}
 	return c.Crypto.Machine()
 }
 

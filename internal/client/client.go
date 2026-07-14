@@ -12,10 +12,8 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/underhax/matrix-cli/internal/config"
+	"github.com/underhax/matrix-cli/internal/logger"
 )
-
-// DebugMode enables verbose debug logging for client operations.
-var DebugMode bool
 
 // Client encapsulates the Matrix client, cryptographic state machine, and persistence layer
 // to orchestrate E2EE operations in a headless environment.
@@ -24,6 +22,7 @@ type Client struct {
 	Crypto *cryptohelper.CryptoHelper
 	DB     *sql.DB
 	VH     *verificationhelper.VerificationHelper
+	Log    logger.Logger
 }
 
 const (
@@ -32,9 +31,8 @@ const (
 	statusSuccess   = "success"
 )
 
-// New initializes the mautrix client and delegates all cryptographic lifecycle management
-// (store creation, table migrations, OlmMachine setup, syncer hooks) to cryptohelper.CryptoHelper.
-func New(ctx context.Context, session *config.Session, db *sql.DB, picklePath string) (*Client, error) {
+// New creates a new Client instance.
+func New(ctx context.Context, session *config.Session, db *sql.DB, picklePath string, log *logger.Logger) (*Client, error) {
 	cli, err := mautrixNewClient(session.HomeserverURL, id.UserID(session.UserID), session.AccessToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create matrix client: %w", err)
@@ -67,6 +65,7 @@ func New(ctx context.Context, session *config.Session, db *sql.DB, picklePath st
 		Matrix: cli,
 		Crypto: ch,
 		DB:     db,
+		Log:    *log,
 	}
 
 	doMigrateSecrets(ctx, clientObj)

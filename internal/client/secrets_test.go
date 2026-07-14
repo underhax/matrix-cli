@@ -11,6 +11,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.mau.fi/util/dbutil"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto"
 	"maunium.net/go/mautrix/id"
 )
@@ -152,14 +153,18 @@ func TestRequestSecrets(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			done := make(chan struct{})
-			c := &Client{}
+			c := &Client{
+				Matrix: &mautrix.Client{DeviceID: "test_device"},
+			}
 
 			getOlmMachine = func(_ *Client) *crypto.OlmMachine {
 				if tt.name == "mach_nil" {
 					close(done)
 					return nil
 				}
-				mach := &crypto.OlmMachine{}
+				mach := &crypto.OlmMachine{
+					Client: c.Matrix,
+				}
 				if !tt.crossSigningKeysNil {
 					mach.CrossSigningKeys = &crypto.CrossSigningKeysCache{}
 				}

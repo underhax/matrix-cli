@@ -9,6 +9,7 @@ import (
 
 	"github.com/underhax/matrix-cli/internal/ui/spinner"
 
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -182,6 +183,15 @@ func (c *Client) RoomInfo(ctx context.Context, roomsStr string) error {
 	return nil
 }
 
+type deviceInfo struct {
+	TrustState string `json:"trust_state,omitempty"`
+	mautrix.RespDeviceInfo
+}
+
+type devicesInfo struct {
+	Devices []deviceInfo `json:"devices"`
+}
+
 // Devices fetches the list of active devices for the authenticated account and outputs it as JSON.
 func (c *Client) Devices(ctx context.Context) error {
 	resp, err := c.Matrix.GetDevicesInfo(ctx)
@@ -189,7 +199,40 @@ func (c *Client) Devices(ctx context.Context) error {
 		return fmt.Errorf("failed to fetch devices: %w", err)
 	}
 
-	payload, err := jsonMarshalIndent(resp, "", "  ")
+	enriched := devicesInfo{
+		Devices: make([]deviceInfo, len(resp.Devices)),
+	}
+	mach := getOlmMachine(c)
+
+	for i, dev := range resp.Devices {
+		enriched.Devices[i] = deviceInfo{
+			RespDeviceInfo: dev,
+		}
+		if mach != nil {
+			cryptoDev, errDev := getOrFetchDevice(ctx, mach, c.Matrix.UserID, dev.DeviceID)
+			if errDev == nil && cryptoDev != nil {
+				trust, errTrust := resolveTrustContext(ctx, mach, cryptoDev)
+				if errTrust == nil {
+					switch trust {
+					case id.TrustStateCrossSignedVerified, id.TrustStateVerified:
+						enriched.Devices[i].TrustState = "verified"
+					case id.TrustStateCrossSignedTOFU:
+						enriched.Devices[i].TrustState = "tofu"
+					case id.TrustStateUnset:
+						enriched.Devices[i].TrustState = "unverified"
+					case id.TrustStateBlacklisted:
+						enriched.Devices[i].TrustState = "blacklisted"
+					case id.TrustStateCrossSignedUntrusted:
+						enriched.Devices[i].TrustState = "untrusted"
+					default:
+						enriched.Devices[i].TrustState = fmt.Sprintf("unknown (%d)", trust)
+					}
+				}
+			}
+		}
+	}
+
+	payload, err := jsonMarshalIndent(enriched, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal devices: %w", err)
 	}

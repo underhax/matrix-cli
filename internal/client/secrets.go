@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"maunium.net/go/mautrix/crypto"
@@ -25,13 +26,25 @@ func decodeBase64(s string) ([]byte, error) {
 }
 
 func (c *Client) requestSecrets(ctx context.Context) {
-	_, _ = fmt.Fprintf(os.Stderr, "Requesting cross-signing keys from trusted devices...\n")
+	_, _ = fmt.Fprintf(os.Stderr, "Requesting cross-signing and megolm backup keys from trusted devices (own_device_id=%s)...\n", c.Matrix.DeviceID)
 
 	go func() {
 		mach := getOlmMachine(c)
 		if mach == nil {
 			return
 		}
+		checkLocal := func(name id.Secret) bool {
+			if mach.CryptoStore != nil {
+				s, err := mach.CryptoStore.GetSecret(ctx, name)
+				return err == nil && s != ""
+			}
+			return false
+		}
+		masterLocal := checkLocal(id.SecretXSMaster)
+		selfLocal := checkLocal(id.SecretXSSelfSigning)
+		userLocal := checkLocal(id.SecretXSUserSigning)
+		backupLocal := checkLocal(id.SecretMegolmBackupV1)
+
 		var master, self, user, backupKey string
 		var errM, errS, errU, errB error
 
@@ -52,27 +65,58 @@ func (c *Client) requestSecrets(ctx context.Context) {
 			return true, nil
 		}, 15*time.Second)
 
-		if errM != nil || errS != nil || errU != nil || errB != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Warning: some secrets timed out or failed to download.\n")
+		logStatus := func(name id.Secret, wasLocal bool, val string, err error) {
+			if err != nil || val == "" {
+				c.Log.Debug().Err(err).Str("secret", string(name)).Msg("Failed to obtain secret")
+				return
+			}
+			if wasLocal {
+				c.Log.Debug().Str("secret", string(name)).Msg("Loaded secret directly from local database")
+			} else {
+				c.Log.Debug().Str("secret", string(name)).Msg("Received secret from network")
+			}
+		}
+
+		logStatus(id.SecretXSMaster, masterLocal, master, errM)
+		logStatus(id.SecretXSSelfSigning, selfLocal, self, errS)
+		logStatus(id.SecretXSUserSigning, userLocal, user, errU)
+		logStatus(id.SecretMegolmBackupV1, backupLocal, backupKey, errB)
+
+		var missing []string
+		for _, v := range []struct {
+			name id.Secret
+			val  string
+		}{
+			{id.SecretXSMaster, master},
+			{id.SecretXSSelfSigning, self},
+			{id.SecretXSUserSigning, user},
+			{id.SecretMegolmBackupV1, backupKey},
+		} {
+			if v.val == "" {
+				missing = append(missing, string(v.name))
+			}
+		}
+
+		if len(missing) > 0 {
+			_, _ = fmt.Fprintf(os.Stderr, "Failed to receive the following keys (own_device_id=%s): %s\n", mach.Client.DeviceID, strings.Join(missing, ", "))
+		} else {
+			_, _ = fmt.Fprintf(os.Stderr, "Successfully received all requested keys (own_device_id=%s).\n", mach.Client.DeviceID)
 		}
 
 		if master == "" || self == "" || user == "" {
-			_, _ = fmt.Fprintf(os.Stderr, "Failed to receive all cross-signing keys.\n")
 			return
 		}
 
-		if backupKey != "" {
-			_, _ = fmt.Fprintf(os.Stderr, "Received megolm backup key.\n")
-		}
+		c.Log.Debug().Msg("Processing cross-signing keys and loading into memory...")
 
-		_, _ = fmt.Fprintf(os.Stderr, "Received cross-signing keys. Saving to local store...\n")
 		doLoadSecrets(ctx, c)
 
 		if mach.CrossSigningKeys != nil {
-			if err := signOwnDevice(ctx, mach, ownIdentity(mach)); err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "Warning: failed to sign own device after receiving keys: %v\n", err)
+			identity := ownIdentity(mach)
+			if err := signOwnDevice(ctx, mach, identity); err != nil {
+				c.Log.Debug().Err(err).Msg("Failed to sign own device after receiving keys")
 			} else {
-				_, _ = fmt.Fprintf(os.Stderr, "Successfully signed own device. You are now fully verified.\n")
+				c.Log.Debug().Str("own_device_id", string(identity.DeviceID)).Msg("Successfully signed own device with cross-signing keys")
 			}
 		}
 	}()
@@ -87,7 +131,7 @@ func (c *Client) loadSecrets(ctx context.Context) {
 	self, err2 := cryptoStoreGetSecret(ctx, mach, id.SecretXSSelfSigning)
 	user, err3 := cryptoStoreGetSecret(ctx, mach, id.SecretXSUserSigning)
 
-	if err1 != nil || err2 != nil || err3 != nil || master == "" || self == "" || user == "" {
+	if !areSecretsValid(err1, err2, err3, master, self, user) {
 		return
 	}
 
@@ -95,7 +139,7 @@ func (c *Client) loadSecrets(ctx context.Context) {
 	decSelf, errS := decodeBase64(self)
 	decUser, errU := decodeBase64(user)
 
-	if errM != nil || errS != nil || errU != nil || len(decMaster) == 0 || len(decSelf) == 0 || len(decUser) == 0 {
+	if !areDecodedSecretsValid(errM, errS, errU, decMaster, decSelf, decUser) {
 		return
 	}
 
@@ -107,8 +151,16 @@ func (c *Client) loadSecrets(ctx context.Context) {
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "warning: failed to import cross-signing keys: %v\n", err)
 	} else {
-		_, _ = fmt.Fprintf(os.Stderr, "Successfully loaded cross-signing keys from local store.\n")
+		c.Log.Debug().Msg("Successfully loaded cross-signing keys from local store")
 	}
+}
+
+func areSecretsValid(err1, err2, err3 error, m, s, u string) bool {
+	return err1 == nil && err2 == nil && err3 == nil && m != "" && s != "" && u != ""
+}
+
+func areDecodedSecretsValid(err1, err2, err3 error, m, s, u []byte) bool {
+	return err1 == nil && err2 == nil && err3 == nil && len(m) > 0 && len(s) > 0 && len(u) > 0
 }
 
 func (c *Client) saveCrossSigningKeys(ctx context.Context, keys crypto.CrossSigningSeeds) {

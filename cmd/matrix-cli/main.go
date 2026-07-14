@@ -16,9 +16,8 @@ import (
 	"github.com/underhax/matrix-cli/internal/client"
 	"github.com/underhax/matrix-cli/internal/config"
 	"github.com/underhax/matrix-cli/internal/consts"
+	"github.com/underhax/matrix-cli/internal/logger"
 	"github.com/underhax/matrix-cli/internal/store"
-
-	"github.com/rs/zerolog"
 )
 
 var (
@@ -84,7 +83,7 @@ type cliOptions struct {
 	rooms           *string
 	msg             *string
 	verbose         *bool
-	debugFlag       *bool
+	debugLevel      *int
 	dataDir         *string
 }
 
@@ -108,7 +107,8 @@ func setupFlags() (*flag.FlagSet, cliOptions) {
 	rooms := fs.String(flagRooms[2:], "", "Target room ID(s) (space-separated for send, room-info, listen)")
 	msg := fs.String(flagMessage[2:], "", "Message body (for send)")
 	verbose := fs.Bool(flagVerbose[2:], false, "Enable verbose output (e.g. detailed room info)")
-	debugFlag := fs.Bool(flagDebug[2:], false, "Enable debug logging for secrets and hooks")
+	debugLevel := 0
+	fs.Var(&logger.LevelFlag{Level: &debugLevel}, flagDebug[2:], "Enable debug logging (use --debug or --debug=2)")
 
 	defaultDataDir := getDefaultDataDir()
 	dataDir := fs.String(flagDataDir[2:], defaultDataDir, "Directory to store session and database files")
@@ -138,7 +138,7 @@ func setupFlags() (*flag.FlagSet, cliOptions) {
 		rooms:           rooms,
 		msg:             msg,
 		verbose:         verbose,
-		debugFlag:       debugFlag,
+		debugLevel:      &debugLevel,
 		dataDir:         dataDir,
 	}
 
@@ -155,9 +155,7 @@ func run(args []string) error {
 		return fmt.Errorf("failed to parse flags: %w", err)
 	}
 
-	if *opts.debugFlag {
-		client.DebugMode = true
-	}
+	log := logger.Setup(*opts.debugLevel, os.Stderr)
 
 	if *opts.mode == "" || *opts.mode == "-h" || *opts.mode == "help" || *opts.mode == "--help" {
 		fs.Usage()
@@ -177,9 +175,8 @@ func run(args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if *opts.debugFlag {
-		logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).With().Timestamp().Logger().Level(zerolog.DebugLevel)
-		ctx = logger.WithContext(ctx)
+	if *opts.debugLevel >= 2 {
+		ctx = log.WithContext(ctx)
 	}
 
 	if err := os.MkdirAll(*opts.dataDir, 0o700); err != nil {
@@ -194,7 +191,7 @@ func run(args []string) error {
 		return handleAuth(ctx, *opts.server, *opts.user, *opts.pass, *opts.device, *opts.ssoCallbackPort, sessionFile)
 	}
 
-	return handleOperations(ctx, *opts.mode, *opts.rooms, *opts.msg, *opts.user, *opts.newKeys, *opts.recoveryKey, *opts.verbose, sessionFile, dbFile, pickleFile)
+	return handleOperations(ctx, &log, *opts.mode, *opts.rooms, *opts.msg, *opts.user, *opts.newKeys, *opts.recoveryKey, *opts.verbose, sessionFile, dbFile, pickleFile)
 }
 
 func handleAuth(ctx context.Context, server, user, pass, device, ssoCallbackPort, sessionFile string) error {
@@ -228,7 +225,7 @@ func handleAuth(ctx context.Context, server, user, pass, device, ssoCallbackPort
 	return nil
 }
 
-func handleOperations(ctx context.Context, mode, rooms, msg, targetUser string, newKeys bool, recoveryKey string, verbose bool, sessionFile, dbFile, pickleFile string) error {
+func handleOperations(ctx context.Context, log *logger.Logger, mode, rooms, msg, targetUser string, newKeys bool, recoveryKey string, verbose bool, sessionFile, dbFile, pickleFile string) error {
 	session, err := config.Load(sessionFile)
 	if err != nil {
 		return fmt.Errorf("failed to load session (run --mode auth first): %w", err)
@@ -252,7 +249,7 @@ func handleOperations(ctx context.Context, mode, rooms, msg, targetUser string, 
 		return nil
 	}
 
-	cli, err := client.New(ctx, session, db, pickleFile)
+	cli, err := client.New(ctx, session, db, pickleFile, log)
 	if err != nil {
 		return fmt.Errorf("client initialization failed: %w", err)
 	}

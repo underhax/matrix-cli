@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/crypto"
+	"maunium.net/go/mautrix/id"
 )
 
 type infoTestCase struct {
@@ -278,6 +280,46 @@ func TestDevices(t *testing.T) {
 			expectErr:         true,
 			expectErrContains: "out write error",
 		},
+		{
+			name:       "devices_verified",
+			httpStatus: 200,
+			httpBody:   `{"devices":[{"device_id":"DEV_V"}]}`,
+		},
+		{
+			name:       "devices_tofu",
+			httpStatus: 200,
+			httpBody:   `{"devices":[{"device_id":"DEV_T"}]}`,
+		},
+		{
+			name:       "devices_unverified",
+			httpStatus: 200,
+			httpBody:   `{"devices":[{"device_id":"DEV_U"}]}`,
+		},
+		{
+			name:       "devices_blacklisted",
+			httpStatus: 200,
+			httpBody:   `{"devices":[{"device_id":"DEV_B"}]}`,
+		},
+		{
+			name:       "devices_untrusted",
+			httpStatus: 200,
+			httpBody:   `{"devices":[{"device_id":"DEV_UT"}]}`,
+		},
+		{
+			name:       "devices_unknown_trust",
+			httpStatus: 200,
+			httpBody:   `{"devices":[{"device_id":"DEV_UNK"}]}`,
+		},
+		{
+			name:       "devices_fetch_err",
+			httpStatus: 200,
+			httpBody:   `{"devices":[{"device_id":"DEV_ERR"}]}`,
+		},
+		{
+			name:       "devices_trust_err",
+			httpStatus: 200,
+			httpBody:   `{"devices":[{"device_id":"DEV_TERR"}]}`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -298,6 +340,41 @@ func TestDevices(t *testing.T) {
 					return nil, tt.jsonMarshalErr
 				}
 			}
+
+			origGetOlmMachine := getOlmMachine
+			getOlmMachine = func(_ *Client) *crypto.OlmMachine { return &crypto.OlmMachine{} }
+			defer func() { getOlmMachine = origGetOlmMachine }()
+
+			origGetOrFetchDevice := getOrFetchDevice
+			getOrFetchDevice = func(_ context.Context, _ *crypto.OlmMachine, _ id.UserID, devID id.DeviceID) (*id.Device, error) {
+				if devID == "DEV_ERR" {
+					return nil, errors.New("mock fetch err")
+				}
+				return &id.Device{DeviceID: devID}, nil
+			}
+			defer func() { getOrFetchDevice = origGetOrFetchDevice }()
+
+			origResolveTrustContext := resolveTrustContext
+			resolveTrustContext = func(_ context.Context, _ *crypto.OlmMachine, dev *id.Device) (id.TrustState, error) {
+				if dev.DeviceID == "DEV_TERR" {
+					return 0, errors.New("mock trust err")
+				}
+				switch dev.DeviceID {
+				case "DEV_V":
+					return id.TrustStateCrossSignedVerified, nil
+				case "DEV_T":
+					return id.TrustStateCrossSignedTOFU, nil
+				case "DEV_U":
+					return id.TrustStateUnset, nil
+				case "DEV_B":
+					return id.TrustStateBlacklisted, nil
+				case "DEV_UT":
+					return id.TrustStateCrossSignedUntrusted, nil
+				default:
+					return id.TrustStateUnknownDevice, nil
+				}
+			}
+			defer func() { resolveTrustContext = origResolveTrustContext }()
 
 			origStdout := stdout
 			defer func() { stdout = origStdout }()
