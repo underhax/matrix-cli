@@ -3,7 +3,7 @@ module github.com/underhax/matrix-cli
 go 1.26.5
 
 require (
-	github.com/mattn/go-sqlite3 v1.14.47
+	github.com/mattn/go-sqlite3 v1.14.48
 	github.com/rs/zerolog v1.35.1
 	go.mau.fi/util v0.9.10
 	golang.org/x/term v0.45.0
