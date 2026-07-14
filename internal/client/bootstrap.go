@@ -73,7 +73,7 @@ func (c *Client) bootstrapRecoveryKey(ctx context.Context, recoveryKey string) e
 	}
 
 	if mach.CryptoStore != nil {
-		backupSecret, err := mach.CryptoStore.GetSecret(ctx, id.SecretMegolmBackupV1)
+		backupSecret, err := getSecret(ctx, mach, id.SecretMegolmBackupV1)
 		switch {
 		case err != nil:
 			c.Log.Debug().Err(err).Str("secret", string(id.SecretMegolmBackupV1)).Msg("Failed to check megolm backup key in store")
@@ -117,7 +117,7 @@ func fetchAndSaveMegolmBackupFromSSSS(ctx context.Context, c *Client, mach *cryp
 		return
 	}
 
-	decryptedBackup, errDec := mach.SSSS.GetDecryptedAccountData(ctx, event.AccountDataMegolmBackupKey, ssssKey)
+	decryptedBackup, errDec := getDecryptedAccountData(ctx, mach, event.AccountDataMegolmBackupKey, ssssKey)
 	if errDec != nil {
 		c.Log.Debug().Err(errDec).Msg("Failed to fetch/decrypt megolm backup key from SSSS")
 		return

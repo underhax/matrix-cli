@@ -35,7 +35,7 @@ func (c *Client) requestSecrets(ctx context.Context) {
 		}
 		checkLocal := func(name id.Secret) bool {
 			if mach.CryptoStore != nil {
-				s, err := mach.CryptoStore.GetSecret(ctx, name)
+				s, err := cryptoStoreGetSecret(ctx, mach, name)
 				return err == nil && s != ""
 			}
 			return false

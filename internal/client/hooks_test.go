@@ -179,6 +179,17 @@ func TestOnSecretRequest(_ *testing.T) {
 		return &crypto.OlmMachine{}
 	}
 
+	evtCancel := &event.Event{
+		Sender: "@user:sub.example.com",
+		Content: event.Content{
+			Parsed: &event.SecretRequestEventContent{
+				Name:   "test_secret_cancel",
+				Action: event.SecretRequestCancellation,
+			},
+		},
+	}
+	c.onSecretRequest(context.Background(), evtCancel)
+
 	origSecretRequestDelay := secretRequestDelay
 	secretRequestDelay = 10 * time.Millisecond
 	defer func() { secretRequestDelay = origSecretRequestDelay }()

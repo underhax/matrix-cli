@@ -154,6 +154,16 @@ func defaultSetEncryptedAccountData(ctx context.Context, mach *crypto.OlmMachine
 
 var setEncryptedAccountData = defaultSetEncryptedAccountData
 
+func defaultGetDecryptedAccountData(ctx context.Context, mach *crypto.OlmMachine, eventType event.Type, key *ssss.Key) ([]byte, error) {
+	if mach == nil || mach.SSSS == nil {
+		return nil, errors.New("machine or ssss is nil")
+	}
+	data, err := mach.SSSS.GetDecryptedAccountData(ctx, eventType, key)
+	return data, wrapErr(err, "get decrypted account data failed: %w")
+}
+
+var getDecryptedAccountData = defaultGetDecryptedAccountData
+
 func defaultCreateKeyBackupVersion(ctx context.Context, mach *crypto.OlmMachine, req *mautrix.ReqRoomKeysVersionCreate[backup.MegolmAuthData]) (*mautrix.RespRoomKeysVersionCreate, error) {
 	resp, err := mach.Client.CreateKeyBackupVersion(ctx, req)
 	return resp, wrapErr(err, "create key backup version failed: %w")

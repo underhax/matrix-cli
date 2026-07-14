@@ -206,6 +206,12 @@ func TestRun(t *testing.T) {
 			wantErr:   true,
 		},
 		{
+			name:      "debug level 2",
+			errString: "failed to create data directory",
+			args:      []string{flagMode, modeAuth, "--debug=2", flagDataDir, "/dev/null/invalid"},
+			wantErr:   true,
+		},
+		{
 			name:    "auth mode calls handleAuth",
 			args:    []string{flagMode, modeAuth, flagServer, mockServer.URL, flagDataDir, tmpDir},
 			wantErr: true,

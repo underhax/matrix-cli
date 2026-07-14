@@ -69,16 +69,103 @@ func TestSecrets_DecodeBase64(t *testing.T) {
 	}
 }
 
-func TestRequestSecrets(t *testing.T) {
-	ctx := context.Background()
+type requestSecretsTest struct {
+	mockSecretKeys      map[id.Secret]string
+	mockSecretErr       map[id.Secret]error
+	mockLocalSecrets    map[id.Secret]string
+	mockSignErr         error
+	name                string
+	crossSigningKeysNil bool
+	cryptoStoreNil      bool
+}
 
-	tests := []struct {
-		mockSecretKeys      map[id.Secret]string
-		mockSecretErr       map[id.Secret]error
-		mockSignErr         error
-		name                string
-		crossSigningKeysNil bool
-	}{
+func mockGetOrRequestSecretImpl(done chan struct{}, tt requestSecretsTest, name id.Secret, cb func(string) (bool, error)) error {
+	if tt.mockSecretErr != nil && tt.mockSecretErr[name] != nil {
+		if name == id.SecretMegolmBackupV1 && tt.mockSecretKeys[id.SecretXSMaster] == "" {
+			close(done)
+		}
+		return tt.mockSecretErr[name]
+	}
+	if val := tt.mockSecretKeys[name]; val != "" {
+		if _, err := cb(val); err != nil {
+			return err
+		}
+	}
+
+	if name == id.SecretMegolmBackupV1 && tt.mockSecretKeys[id.SecretXSMaster] == "" {
+		close(done)
+	}
+	return nil
+}
+
+func runRequestSecretsTest(t *testing.T, tt requestSecretsTest) {
+	ctx := context.Background()
+	done := make(chan struct{})
+	c := &Client{
+		Matrix: &mautrix.Client{DeviceID: "test_device"},
+	}
+
+	getOlmMachine = func(_ *Client) *crypto.OlmMachine {
+		if tt.name == "mach_nil" {
+			close(done)
+			return nil
+		}
+		mach := &crypto.OlmMachine{
+			Client: c.Matrix,
+		}
+		if !tt.cryptoStoreNil {
+			mach.CryptoStore = &crypto.SQLCryptoStore{}
+		}
+		if !tt.crossSigningKeysNil {
+			mach.CrossSigningKeys = &crypto.CrossSigningKeysCache{}
+		}
+		return mach
+	}
+	defer func() { getOlmMachine = defaultGetOlmMachine }()
+
+	cryptoStoreGetSecret = func(_ context.Context, _ *crypto.OlmMachine, name id.Secret) (string, error) {
+		if tt.mockLocalSecrets != nil && tt.mockLocalSecrets[name] != "" {
+			return tt.mockLocalSecrets[name], nil
+		}
+		return "", errors.New("not found")
+	}
+	defer func() { cryptoStoreGetSecret = defaultCryptoStoreGetSecret }()
+
+	getOrRequestSecret = func(_ context.Context, _ *crypto.OlmMachine, name id.Secret, cb func(string) (bool, error), _ time.Duration) error {
+		return mockGetOrRequestSecretImpl(done, tt, name, cb)
+	}
+	defer func() { getOrRequestSecret = defaultGetOrRequestSecret }()
+
+	doLoadSecrets = func(_ context.Context, _ *Client) {
+		if tt.crossSigningKeysNil {
+			close(done)
+		}
+	}
+	defer func() { doLoadSecrets = defaultLoadSecrets }()
+
+	signOwnDevice = func(_ context.Context, _ *crypto.OlmMachine, _ *id.Device) error {
+		close(done)
+		return tt.mockSignErr
+	}
+	defer func() { signOwnDevice = defaultSignOwnDevice }()
+
+	ownIdentity = func(_ *crypto.OlmMachine) *id.Device {
+		return &id.Device{}
+	}
+	defer func() { ownIdentity = defaultOwnIdentity }()
+
+	c.requestSecrets(ctx)
+
+	select {
+	case <-done:
+		time.Sleep(10 * time.Millisecond)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for requestSecrets goroutine")
+	}
+}
+
+func TestRequestSecrets(t *testing.T) {
+	tests := []requestSecretsTest{
 		{
 			name:        "all_secrets_success",
 			mockSignErr: nil,
@@ -148,76 +235,40 @@ func TestRequestSecrets(t *testing.T) {
 			mockSecretErr:       nil,
 			crossSigningKeysNil: false,
 		},
+		{
+			name:        "cryptostore_nil",
+			mockSignErr: nil,
+			mockSecretKeys: map[id.Secret]string{
+				id.SecretXSMaster:       "m1",
+				id.SecretXSSelfSigning:  "s1",
+				id.SecretXSUserSigning:  "u1",
+				id.SecretMegolmBackupV1: "b1",
+			},
+			mockSecretErr:       nil,
+			crossSigningKeysNil: false,
+			cryptoStoreNil:      true,
+		},
+		{
+			name:        "some_secrets_local",
+			mockSignErr: nil,
+			mockSecretKeys: map[id.Secret]string{
+				id.SecretXSMaster:       "m1",
+				id.SecretXSSelfSigning:  "s1",
+				id.SecretXSUserSigning:  "u1",
+				id.SecretMegolmBackupV1: "b1",
+			},
+			mockLocalSecrets: map[id.Secret]string{
+				id.SecretXSMaster:      "m1",
+				id.SecretXSSelfSigning: "s1",
+			},
+			mockSecretErr:       nil,
+			crossSigningKeysNil: false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			done := make(chan struct{})
-			c := &Client{
-				Matrix: &mautrix.Client{DeviceID: "test_device"},
-			}
-
-			getOlmMachine = func(_ *Client) *crypto.OlmMachine {
-				if tt.name == "mach_nil" {
-					close(done)
-					return nil
-				}
-				mach := &crypto.OlmMachine{
-					Client: c.Matrix,
-				}
-				if !tt.crossSigningKeysNil {
-					mach.CrossSigningKeys = &crypto.CrossSigningKeysCache{}
-				}
-				return mach
-			}
-			defer func() { getOlmMachine = defaultGetOlmMachine }()
-
-			getOrRequestSecret = func(_ context.Context, _ *crypto.OlmMachine, name id.Secret, cb func(string) (bool, error), _ time.Duration) error {
-				if tt.mockSecretErr != nil && tt.mockSecretErr[name] != nil {
-					if name == id.SecretMegolmBackupV1 && tt.mockSecretKeys[id.SecretXSMaster] == "" {
-						close(done)
-					}
-					return tt.mockSecretErr[name]
-				}
-				if val := tt.mockSecretKeys[name]; val != "" {
-					if _, err := cb(val); err != nil {
-						return err
-					}
-				}
-
-				if name == id.SecretMegolmBackupV1 && tt.mockSecretKeys[id.SecretXSMaster] == "" {
-					close(done)
-				}
-				return nil
-			}
-			defer func() { getOrRequestSecret = defaultGetOrRequestSecret }()
-
-			doLoadSecrets = func(_ context.Context, _ *Client) {
-				if tt.crossSigningKeysNil {
-					close(done)
-				}
-			}
-			defer func() { doLoadSecrets = defaultLoadSecrets }()
-
-			signOwnDevice = func(_ context.Context, _ *crypto.OlmMachine, _ *id.Device) error {
-				close(done)
-				return tt.mockSignErr
-			}
-			defer func() { signOwnDevice = defaultSignOwnDevice }()
-
-			ownIdentity = func(_ *crypto.OlmMachine) *id.Device {
-				return &id.Device{}
-			}
-			defer func() { ownIdentity = defaultOwnIdentity }()
-
-			c.requestSecrets(ctx)
-
-			select {
-			case <-done:
-				time.Sleep(10 * time.Millisecond)
-			case <-time.After(2 * time.Second):
-				t.Fatal("timeout waiting for requestSecrets goroutine")
-			}
+			runRequestSecretsTest(t, tt)
 		})
 	}
 }
