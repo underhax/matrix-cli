@@ -265,6 +265,50 @@ func defaultSendEncryptedToDevice(ctx context.Context, mach *crypto.OlmMachine, 
 	return wrapErr(mach.SendEncryptedToDevice(ctx, device, evtType, content), "send encrypted failed: %w")
 }
 
+func defaultFetchKeys(ctx context.Context, mach *crypto.OlmMachine, users []id.UserID, force bool) (map[id.UserID]map[id.DeviceID]*id.Device, error) {
+	devs, err := mach.FetchKeys(ctx, users, force)
+	return devs, wrapErr(err, "fetch keys failed: %w")
+}
+
+var fetchKeys = defaultFetchKeys
+
+func defaultMatrixSyncWithContext(ctx context.Context, client *mautrix.Client) error {
+	return wrapErr(client.SyncWithContext(ctx), "sync failed: %w")
+}
+
+var matrixSyncWithContext = defaultMatrixSyncWithContext
+
+func defaultStartVerification(ctx context.Context, vh *verificationhelper.VerificationHelper, userID id.UserID) (id.VerificationTransactionID, error) {
+	txnID, err := vh.StartVerification(ctx, userID)
+	return txnID, wrapErr(err, "start verification failed: %w")
+}
+
+var startVerification = defaultStartVerification
+
+func defaultAcceptVerification(ctx context.Context, vh *verificationhelper.VerificationHelper, txnID id.VerificationTransactionID) error {
+	return wrapErr(vh.AcceptVerification(ctx, txnID), "accept verification failed: %w")
+}
+
+var acceptVerification = defaultAcceptVerification
+
+func defaultStartSAS(ctx context.Context, vh *verificationhelper.VerificationHelper, txnID id.VerificationTransactionID) error {
+	return wrapErr(vh.StartSAS(ctx, txnID), "start sas failed: %w")
+}
+
+var startSAS = defaultStartSAS
+
+func defaultConfirmSAS(ctx context.Context, vh *verificationhelper.VerificationHelper, txnID id.VerificationTransactionID) error {
+	return wrapErr(vh.ConfirmSAS(ctx, txnID), "confirm sas failed: %w")
+}
+
+var confirmSAS = defaultConfirmSAS
+
+func defaultCancelVerification(ctx context.Context, vh *verificationhelper.VerificationHelper, txnID id.VerificationTransactionID, code event.VerificationCancelCode, reason string) error {
+	return wrapErr(vh.CancelVerification(ctx, txnID, code, reason), "cancel verification failed: %w")
+}
+
+var cancelVerification = defaultCancelVerification
+
 func defaultJSONMarshal(v any) ([]byte, error) {
 	return json.Marshal(v)
 }
@@ -300,3 +344,15 @@ func defaultRowsClose(rows dbutil.Rows) error {
 }
 
 var rowsClose = defaultRowsClose
+
+func fprintfStderr(format string, a ...any) {
+	if _, err := fmt.Fprintf(stderr, format, a...); err != nil {
+		return
+	}
+}
+
+func fprintlnStderr(a ...any) {
+	if _, err := fmt.Fprintln(stderr, a...); err != nil {
+		return
+	}
+}
