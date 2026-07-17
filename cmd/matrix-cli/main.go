@@ -12,12 +12,14 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/underhax/matrix-cli/internal/client"
 	"github.com/underhax/matrix-cli/internal/config"
 	"github.com/underhax/matrix-cli/internal/consts"
 	"github.com/underhax/matrix-cli/internal/logger"
 	"github.com/underhax/matrix-cli/internal/store"
+	"github.com/underhax/matrix-cli/internal/validator"
 )
 
 var (
@@ -89,6 +91,7 @@ type cliOptions struct {
 }
 
 func main() {
+	setUmask()
 	if err := run(os.Args[1:]); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(1)
@@ -188,11 +191,80 @@ func run(args []string) error {
 	dbFile := filepath.Join(*opts.dataDir, "crypto.db")
 	pickleFile := filepath.Join(*opts.dataDir, "pickle.key")
 
+	if msgs := validateInput(*opts.mode, *opts.server, *opts.user, *opts.rooms, sessionFile, dbFile, pickleFile); len(msgs) > 0 {
+		for _, msg := range msgs {
+			_, _ = fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
+		}
+		return nil
+	}
+
 	if *opts.mode == modeAuth {
 		return handleAuth(ctx, *opts.server, *opts.user, *opts.pass, *opts.device, *opts.ssoCallbackPort, sessionFile)
 	}
 
 	return handleOperations(ctx, &log, *opts.mode, *opts.rooms, *opts.msg, *opts.user, *opts.newKeys, *opts.recoveryKey, *opts.verbose, sessionFile, dbFile, pickleFile)
+}
+
+func validateInput(mode, server, user, rooms, sessionFile, dbFile, pickleFile string) []string {
+	msgs := make([]string, 0, 8)
+
+	msgs = append(msgs, validateAuthInput(mode, server, user)...)
+	msgs = append(msgs, validateRoomsInput(mode, rooms)...)
+	msgs = append(msgs, validateFilesPerms(sessionFile, dbFile, pickleFile)...)
+
+	return msgs
+}
+
+func validateAuthInput(mode, server, user string) []string {
+	var msgs []string
+	if mode == modeAuth {
+		if err := validateServerURL(server); err != nil {
+			msgs = append(msgs, fmt.Sprintf("%v for server %q", err, server))
+		}
+	}
+	if user != "" && (mode == modeAuth || mode == modeVerify) {
+		if err := validator.ValidateUserID(user); err != nil {
+			msgs = append(msgs, fmt.Sprintf("%v for user %q", err, user))
+		}
+	}
+	return msgs
+}
+
+func validateServerURL(server string) error {
+	if strings.HasPrefix(server, "http://") || strings.HasPrefix(server, "https://") {
+		if err := validator.ValidateURL(server); err != nil {
+			return fmt.Errorf("%w", err)
+		}
+		return nil
+	}
+	if err := validator.ValidateDomain(server); err != nil {
+		return fmt.Errorf("%w", err)
+	}
+	return nil
+}
+
+func validateRoomsInput(mode, rooms string) []string {
+	var msgs []string
+	if rooms != "" && (mode == modeSend || mode == modeListen || mode == modeRoomInfo) {
+		for r := range strings.FieldsSeq(rooms) {
+			if err := validator.ValidateRoomID(r); err != nil {
+				msgs = append(msgs, fmt.Sprintf("%v for room %q", err, r))
+			}
+		}
+	}
+	return msgs
+}
+
+func validateFilesPerms(files ...string) []string {
+	var msgs []string
+	for _, file := range files {
+		if err := validator.ValidatePermissions(file); err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				msgs = append(msgs, fmt.Sprintf("insecure permissions on %q (expected 0600)", file))
+			}
+		}
+	}
+	return msgs
 }
 
 func handleAuth(ctx context.Context, server, user, pass, device, ssoCallbackPort, sessionFile string) error {

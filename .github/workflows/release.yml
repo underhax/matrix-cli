@@ -18,10 +18,12 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Setup Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: "go.mod"
 
+      - name: Install MinGW
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64 gcc-mingw-w64-aarch64
 
       - name: Build and Archive
         run: |
@@ -56,7 +58,9 @@ jobs:
             fi
 
             if [ "$GOOS" = "windows" ]; then
-              GOOS=$GOOS GOARCH=$GOARCH go build -tags goolm -ldflags "-X 'main.AppVersion=${{ github.ref_name }}'" -o "build_${GOOS}_${GOARCH}/matrix-cli.exe" ./cmd/matrix-cli
+              COMPILER="x86_64-w64-mingw32-gcc"
+              [ "$GOARCH" = "arm64" ] && COMPILER="aarch64-w64-mingw32-gcc"
+              CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH CC=$COMPILER go build -tags goolm -ldflags "-X 'main.AppVersion=${{ github.ref_name }}'" -o "build_${GOOS}_${GOARCH}/matrix-cli.exe" ./cmd/matrix-cli
               cd "build_${GOOS}_${GOARCH}"
               zip -r "../release_assets/matrix-cli-${FRIENDLY_OS}-${FRIENDLY_ARCH}.zip" ./*
               cd ..

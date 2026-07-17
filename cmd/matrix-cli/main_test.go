@@ -212,6 +212,11 @@ func TestRun(t *testing.T) {
 			wantErr:   true,
 		},
 		{
+			name:    "validation fails inside run",
+			args:    []string{flagMode, modeAuth, flagServer, "http://[::1]:err", flagDataDir, tmpDir},
+			wantErr: false,
+		},
+		{
 			name:    "auth mode calls handleAuth",
 			args:    []string{flagMode, modeAuth, flagServer, mockServer.URL, flagDataDir, tmpDir},
 			wantErr: true,
