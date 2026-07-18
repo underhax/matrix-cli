@@ -1,0 +1,35 @@
+services:
+  matrix-cli:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        TARGETARCH: ${TARGETARCH:-amd64}
+    container_name: matrix-cli
+    hostname: matrix-cli
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:2222:2222"
+    healthcheck:
+        test: ["CMD", "nc", "-z", "127.0.0.1", "2222"]
+        interval: 30s
+        timeout: 5s
+        retries: 3
+        start_period: 10s
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /run/sshd:mode=0755,uid=10001,gid=10001,noexec,nosuid
+      - /tmp:mode=1777,noexec,nosuid
+    volumes:
+      - ./authorized_keys:/home/bot/.ssh/authorized_keys:ro
+      - ./bot_data:/home/bot/data
+      - ./host_keys:/home/bot/keys
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add: []
+    cpus: 0.3
+    mem_limit: 128m
+    mem_reservation: 32m

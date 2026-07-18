@@ -38,3 +38,7 @@ data/
 *.md
 !README.md
 !.github/**/*.md
+
+authorized_keys
+bot_data/
+host_keys/

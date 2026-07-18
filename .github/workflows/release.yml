@@ -9,8 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build and Release
+  release-linux-windows:
+    name: Build Linux and Windows
     runs-on: ubuntu-latest
 
     steps:
@@ -22,15 +22,14 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - name: Install MinGW
-        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64 gcc-mingw-w64-aarch64
+      - name: Install Cross-Compilers
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64 gcc-mingw-w64-aarch64 gcc-aarch64-linux-gnu
 
       - name: Build and Archive
         run: |
           mkdir -p release_assets
 
-          # List of OS/ARCH targets
-          TARGETS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64"
+          TARGETS="linux/amd64 linux/arm64 windows/amd64 windows/arm64"
 
           for target in $TARGETS; do
             GOOS=${target%/*}
@@ -44,39 +43,86 @@ jobs:
             FRIENDLY_OS=$GOOS
             FRIENDLY_ARCH=$GOARCH
 
-            if [ "$GOOS" = "darwin" ]; then
-              FRIENDLY_OS="macos"
-              if [ "$GOARCH" = "amd64" ]; then
-                FRIENDLY_ARCH="intel"
-              elif [ "$GOARCH" = "arm64" ]; then
-                FRIENDLY_ARCH="apple-silicon"
-              fi
-            elif [ "$GOOS" = "windows" ]; then
+            if [ "$GOOS" = "windows" ]; then
               if [ "$GOARCH" = "amd64" ]; then
                 FRIENDLY_ARCH="x64"
               fi
             fi
 
+            OUTPUT_NAME="matrix-cli"
+            CC="gcc"
+
             if [ "$GOOS" = "windows" ]; then
-              COMPILER="x86_64-w64-mingw32-gcc"
-              [ "$GOARCH" = "arm64" ] && COMPILER="aarch64-w64-mingw32-gcc"
-              CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH CC=$COMPILER go build -tags goolm -ldflags "-X 'main.AppVersion=${{ github.ref_name }}'" -o "build_${GOOS}_${GOARCH}/matrix-cli.exe" ./cmd/matrix-cli
-              cd "build_${GOOS}_${GOARCH}"
-              zip -r "../release_assets/matrix-cli-${FRIENDLY_OS}-${FRIENDLY_ARCH}.zip" ./*
-              cd ..
-            else
-              GOOS=$GOOS GOARCH=$GOARCH go build -tags goolm -ldflags "-X 'main.AppVersion=${{ github.ref_name }}'" -o "build_${GOOS}_${GOARCH}/matrix-cli" ./cmd/matrix-cli
-              cd "build_${GOOS}_${GOARCH}"
-              tar -czvf "../release_assets/matrix-cli-${FRIENDLY_OS}-${FRIENDLY_ARCH}.tar.gz" ./*
-              cd ..
+              OUTPUT_NAME="matrix-cli.exe"
+              CC="x86_64-w64-mingw32-gcc"
+              [ "$GOARCH" = "arm64" ] && CC="aarch64-w64-mingw32-gcc"
+            elif [ "$GOOS" = "linux" ] && [ "$GOARCH" = "arm64" ]; then
+              CC="aarch64-linux-gnu-gcc"
             fi
+
+            CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH CC=$CC go build -tags goolm -trimpath -ldflags "-s -w -X 'main.AppVersion=${{ github.ref_name }}'" -o "build_${GOOS}_${GOARCH}/${OUTPUT_NAME}" ./cmd/matrix-cli
+
+            cd "build_${GOOS}_${GOARCH}"
+            if [ "$GOOS" = "windows" ]; then
+              zip -r "../release_assets/matrix-cli-${FRIENDLY_OS}-${FRIENDLY_ARCH}.zip" ./*
+            else
+              tar -czvf "../release_assets/matrix-cli-${FRIENDLY_OS}-${FRIENDLY_ARCH}.tar.gz" ./*
+            fi
+            cd ..
           done
 
-      - name: Publish Release
+      - name: Publish Release (Linux & Windows)
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: release_assets/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-macos:
+    name: Build macOS
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "go.mod"
+
+      - name: Build and Archive
+        run: |
+          mkdir -p release_assets
+
+          TARGETS="darwin/amd64 darwin/arm64"
+
+          for target in $TARGETS; do
+            GOOS=${target%/*}
+            GOARCH=${target#*/}
+            echo "Building for $GOOS/$GOARCH..."
+
+            mkdir -p "build_${GOOS}_${GOARCH}"
+            cp LICENSE "build_${GOOS}_${GOARCH}/"
+            cp README.md "build_${GOOS}_${GOARCH}/"
+
+            FRIENDLY_OS="macos"
+            FRIENDLY_ARCH=$GOARCH
+            if [ "$GOARCH" = "amd64" ]; then
+              FRIENDLY_ARCH="intel"
+            elif [ "$GOARCH" = "arm64" ]; then
+              FRIENDLY_ARCH="apple-silicon"
+            fi
+
+            CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH CC=clang go build -tags goolm -trimpath -ldflags "-s -w -X 'main.AppVersion=${{ github.ref_name }}'" -o "build_${GOOS}_${GOARCH}/matrix-cli" ./cmd/matrix-cli
+
+            cd "build_${GOOS}_${GOARCH}"
+            tar -czvf "../release_assets/matrix-cli-${FRIENDLY_OS}-${FRIENDLY_ARCH}.tar.gz" ./*
+            cd ..
+          done
+
+      - name: Publish Release (macOS)
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: release_assets/*

@@ -81,3 +81,21 @@ jobs:
           scan-ref: '.'
           exit-code: '1'
           severity: 'CRITICAL,HIGH'
+
+  docker-lint:
+    name: Docker Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Lint entrypoint.sh with shellcheck
+        run: shellcheck ./docker/entrypoint.sh
+
+      - name: Lint Dockerfile with hadolint
+        run: docker run --rm -i hadolint/hadolint < ./docker/Dockerfile
+
+      - name: Validate docker-compose.yaml
+        run: docker compose -f ./docker/docker-compose.yaml config --quiet
+
+      - name: Validate docker-compose.dev.yaml
+        run: docker compose -f ./docker/docker-compose.dev.yaml config --quiet
