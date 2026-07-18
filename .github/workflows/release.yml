@@ -9,8 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  release-linux-windows:
-    name: Build Linux and Windows
+  release-linux:
+    name: Build Linux
     runs-on: ubuntu-latest
 
     steps:
@@ -23,13 +23,13 @@ jobs:
           go-version-file: "go.mod"
 
       - name: Install Cross-Compilers
-        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64 gcc-mingw-w64-aarch64 gcc-aarch64-linux-gnu
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build and Archive
         run: |
           mkdir -p release_assets
 
-          TARGETS="linux/amd64 linux/arm64 windows/amd64 windows/arm64"
+          TARGETS="linux/amd64 linux/arm64"
 
           for target in $TARGETS; do
             GOOS=${target%/*}
@@ -43,38 +43,84 @@ jobs:
             FRIENDLY_OS=$GOOS
             FRIENDLY_ARCH=$GOARCH
 
-            if [ "$GOOS" = "windows" ]; then
-              if [ "$GOARCH" = "amd64" ]; then
-                FRIENDLY_ARCH="x64"
-              fi
-            fi
-
             OUTPUT_NAME="matrix-cli"
             CC="gcc"
 
-            if [ "$GOOS" = "windows" ]; then
-              OUTPUT_NAME="matrix-cli.exe"
-              CC="x86_64-w64-mingw32-gcc"
-              [ "$GOARCH" = "arm64" ] && CC="aarch64-w64-mingw32-gcc"
-            elif [ "$GOOS" = "linux" ] && [ "$GOARCH" = "arm64" ]; then
+            if [ "$GOARCH" = "arm64" ]; then
               CC="aarch64-linux-gnu-gcc"
             fi
 
             CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH CC=$CC go build -tags goolm -trimpath -ldflags "-s -w -X 'main.AppVersion=${{ github.ref_name }}'" -o "build_${GOOS}_${GOARCH}/${OUTPUT_NAME}" ./cmd/matrix-cli
 
             cd "build_${GOOS}_${GOARCH}"
-            if [ "$GOOS" = "windows" ]; then
-              zip -r "../release_assets/matrix-cli-${FRIENDLY_OS}-${FRIENDLY_ARCH}.zip" ./*
-            else
-              tar -czvf "../release_assets/matrix-cli-${FRIENDLY_OS}-${FRIENDLY_ARCH}.tar.gz" ./*
-            fi
+            tar -czvf "../release_assets/matrix-cli-${FRIENDLY_OS}-${FRIENDLY_ARCH}.tar.gz" ./*
             cd ..
           done
 
-      - name: Publish Release (Linux & Windows)
+      - name: Publish Release (Linux)
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: release_assets/*
+
+  release-windows:
+    name: Build Windows
+    runs-on: ubuntu-latest
+    container:
+      image: mstorsjo/llvm-mingw:20260616@sha256:44a55fc8d50aa6c8ce3c9ba5b7b482dbbf411e5e5bfdbda4d160369d054702e9
+
+    steps:
+      - name: Install Git and Zip
+        run: apt-get update && apt-get install -y git zip
+
+      - name: Checkout Code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "go.mod"
+
+      - name: Build and Archive
+        run: |
+          mkdir -p release_assets
+
+          TARGETS="windows/amd64 windows/arm64"
+
+          for target in $TARGETS; do
+            GOOS=${target%/*}
+            GOARCH=${target#*/}
+            echo "Building for $GOOS/$GOARCH..."
+
+            mkdir -p "build_${GOOS}_${GOARCH}"
+            cp LICENSE "build_${GOOS}_${GOARCH}/"
+            cp README.md "build_${GOOS}_${GOARCH}/"
+
+            FRIENDLY_OS=$GOOS
+            FRIENDLY_ARCH=$GOARCH
+
+            if [ "$GOARCH" = "amd64" ]; then
+              FRIENDLY_ARCH="x64"
+            fi
+
+            OUTPUT_NAME="matrix-cli.exe"
+            CC="x86_64-w64-mingw32-gcc"
+
+            if [ "$GOARCH" = "arm64" ]; then
+              CC="aarch64-w64-mingw32-gcc"
+            fi
+
+            CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH CC=$CC go build -tags goolm -trimpath -ldflags "-s -w -X 'main.AppVersion=${{ github.ref_name }}'" -o "build_${GOOS}_${GOARCH}/${OUTPUT_NAME}" ./cmd/matrix-cli
+
+            cd "build_${GOOS}_${GOARCH}"
+            zip -r "../release_assets/matrix-cli-${FRIENDLY_OS}-${FRIENDLY_ARCH}.zip" ./*
+            cd ..
+          done
+
+      - name: Publish Release (Windows)
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: release_assets/*
 
