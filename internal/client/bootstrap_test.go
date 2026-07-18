@@ -223,7 +223,7 @@ func TestBootstrapNewKeys(t *testing.T) {
 
 	generateAndUploadCrossSigningKeys = func(_ context.Context, _ *crypto.OlmMachine, cb func(*mautrix.RespUserInteractive) any, _ string) (string, *crypto.CrossSigningKeysCache, error) {
 		cb(&mautrix.RespUserInteractive{})
-		return "new-recovery-key", nil, nil
+		return "new-recovery-key", &crypto.CrossSigningKeysCache{}, nil
 	}
 	ownIdentity = func(_ *crypto.OlmMachine) *id.Device { return nil }
 	defer func() { ownIdentity = defaultOwnIdentity }()
@@ -238,6 +238,11 @@ func TestBootstrapNewKeys(t *testing.T) {
 	}
 	defer func() { signOwnMasterKey = defaultSignOwnMasterKey }()
 
+	clearCrossSigningSignatures = func(_ context.Context, _ *crypto.OlmMachine, _ string) error {
+		return errors.New("mock clear sigs err")
+	}
+	defer func() { clearCrossSigningSignatures = defaultClearCrossSigningSignatures }()
+
 	exportCrossSigningKeys = func(_ *crypto.OlmMachine) crypto.CrossSigningSeeds {
 		return crypto.CrossSigningSeeds{}
 	}
@@ -250,6 +255,12 @@ func TestBootstrapNewKeys(t *testing.T) {
 		return errors.New("mock setup backup err")
 	}
 	defer func() { doSetupMegolmBackup = defaultSetupMegolmBackup }()
+
+	origClearCrossSigningSignatures := clearCrossSigningSignatures
+	clearCrossSigningSignatures = func(_ context.Context, _ *crypto.OlmMachine, _ string) error {
+		return nil
+	}
+	defer func() { clearCrossSigningSignatures = origClearCrossSigningSignatures }()
 
 	oldStdout := os.Stdout
 	devNull, errOpen := os.OpenFile(os.DevNull, os.O_WRONLY, 0o600)
@@ -267,6 +278,17 @@ func TestBootstrapNewKeys(t *testing.T) {
 	err = c.bootstrapNewKeys(ctx)
 	if err != nil {
 		t.Errorf("expected success, got %v", err)
+	}
+
+	clearCrossSigningSignatures = func(_ context.Context, _ *crypto.OlmMachine, _ string) error {
+		return errors.New("mock clear err")
+	}
+	err = c.bootstrapNewKeys(ctx)
+	if err != nil {
+		t.Errorf("expected success despite clear error, got %v", err)
+	}
+	clearCrossSigningSignatures = func(_ context.Context, _ *crypto.OlmMachine, _ string) error {
+		return nil
 	}
 
 	if errClose := devNull.Close(); errClose != nil {
@@ -294,6 +316,8 @@ func TestBootstrap(t *testing.T) {
 	signOwnDevice = func(_ context.Context, _ *crypto.OlmMachine, _ *id.Device) error { return nil }
 	signOwnMasterKey = func(_ context.Context, _ *crypto.OlmMachine) error { return nil }
 	doSetupMegolmBackup = func(_ context.Context, _ *Client, _ string) error { return nil }
+	origClearCrossSigningSignatures := clearCrossSigningSignatures
+	clearCrossSigningSignatures = func(_ context.Context, _ *crypto.OlmMachine, _ string) error { return nil }
 
 	defer func() {
 		getOlmMachine = defaultGetOlmMachine
@@ -305,6 +329,7 @@ func TestBootstrap(t *testing.T) {
 		signOwnDevice = defaultSignOwnDevice
 		signOwnMasterKey = defaultSignOwnMasterKey
 		doSetupMegolmBackup = defaultSetupMegolmBackup
+		clearCrossSigningSignatures = origClearCrossSigningSignatures
 	}()
 
 	err := c.Bootstrap(ctx, false, "direct-key")

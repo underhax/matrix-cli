@@ -3,7 +3,6 @@ package client
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -84,14 +83,8 @@ func (c *Client) bootstrapRecoveryKey(ctx context.Context, recoveryKey string) e
 		}
 	}
 
-	out := map[string]string{
-		jsonKeyStatus: statusSuccess,
-		"method":      "recovery_key",
-	}
-	if payload, errMarshal := json.Marshal(out); errMarshal == nil {
-		if _, errWrite := fmt.Fprintln(os.Stdout, string(payload)); errWrite != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to write output: %v\n", errWrite)
-		}
+	if _, err := fmt.Fprintln(os.Stdout, "Successfully bootstrapped with recovery key."); err != nil {
+		c.Log.Debug().Err(err).Msg("Failed to print success message")
 	}
 	return nil
 }
@@ -149,7 +142,7 @@ func (c *Client) bootstrapNewKeys(ctx context.Context) error {
 	}
 	c.Log.Debug().Str("own_device_id", ownDeviceID).Str("user_id", ownUserID).Msg("Generating new cross-signing keys and SSSS...")
 
-	newRecoveryKey, _, err := generateAndUploadCrossSigningKeys(ctx, mach, func(uiResp *mautrix.RespUserInteractive) any {
+	newRecoveryKey, newCache, err := generateAndUploadCrossSigningKeys(ctx, mach, func(uiResp *mautrix.RespUserInteractive) any {
 		return handleUIA(c, uiResp)
 	}, "")
 	if err != nil {
@@ -166,6 +159,13 @@ func (c *Client) bootstrapNewKeys(ctx context.Context) error {
 		_, _ = fmt.Fprintf(os.Stderr, "warning: failed to sign own master key: %v\n", errMast)
 	}
 
+	if err := clearCrossSigningSignatures(ctx, mach, ownUserID); err != nil {
+		c.Log.Debug().Err(err).Msg("failed to clean old signatures after bootstrap")
+	}
+
+	if newCache != nil {
+		mach.CrossSigningKeys = newCache
+	}
 	keys := exportCrossSigningKeys(mach)
 	c.Log.Debug().
 		Bool("has_master", keys.MasterKey != nil).
@@ -184,17 +184,6 @@ func (c *Client) bootstrapNewKeys(ctx context.Context) error {
 	}
 
 	_, _ = fmt.Fprintf(os.Stderr, "Successfully generated new keys.\n\nIMPORTANT: Save this new Recovery Key: %s\n\n", newRecoveryKey)
-
-	out := map[string]any{
-		jsonKeyStatus:  statusSuccess,
-		"method":       "new_keys",
-		"recovery_key": newRecoveryKey,
-	}
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	if errEnc := enc.Encode(out); errEnc != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "warning: failed to encode output: %v\n", errEnc)
-	}
 
 	return nil
 }

@@ -192,6 +192,23 @@ type devicesInfo struct {
 	Devices []deviceInfo `json:"devices"`
 }
 
+func trustStateToString(trust id.TrustState) string {
+	switch trust {
+	case id.TrustStateCrossSignedVerified, id.TrustStateVerified:
+		return "verified"
+	case id.TrustStateCrossSignedTOFU:
+		return "tofu"
+	case id.TrustStateUnset:
+		return "unverified"
+	case id.TrustStateBlacklisted:
+		return "blacklisted"
+	case id.TrustStateCrossSignedUntrusted:
+		return "untrusted"
+	default:
+		return fmt.Sprintf("unknown (%d)", trust)
+	}
+}
+
 // Devices fetches the list of active devices for the authenticated account and outputs it as JSON.
 func (c *Client) Devices(ctx context.Context) error {
 	resp, err := c.Matrix.GetDevicesInfo(ctx)
@@ -204,6 +221,10 @@ func (c *Client) Devices(ctx context.Context) error {
 	}
 	mach := getOlmMachine(c)
 
+	if mach != nil && c.Matrix != nil {
+		c.refreshCrossSigningKeys(ctx, c.Matrix.UserID)
+	}
+
 	for i, dev := range resp.Devices {
 		enriched.Devices[i] = deviceInfo{
 			RespDeviceInfo: dev,
@@ -213,20 +234,7 @@ func (c *Client) Devices(ctx context.Context) error {
 			if errDev == nil && cryptoDev != nil {
 				trust, errTrust := resolveTrustContext(ctx, mach, cryptoDev)
 				if errTrust == nil {
-					switch trust {
-					case id.TrustStateCrossSignedVerified, id.TrustStateVerified:
-						enriched.Devices[i].TrustState = "verified"
-					case id.TrustStateCrossSignedTOFU:
-						enriched.Devices[i].TrustState = "tofu"
-					case id.TrustStateUnset:
-						enriched.Devices[i].TrustState = "unverified"
-					case id.TrustStateBlacklisted:
-						enriched.Devices[i].TrustState = "blacklisted"
-					case id.TrustStateCrossSignedUntrusted:
-						enriched.Devices[i].TrustState = "untrusted"
-					default:
-						enriched.Devices[i].TrustState = fmt.Sprintf("unknown (%d)", trust)
-					}
+					enriched.Devices[i].TrustState = trustStateToString(trust)
 				}
 			}
 		}

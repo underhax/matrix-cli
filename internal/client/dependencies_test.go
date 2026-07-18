@@ -2,10 +2,15 @@ package client
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	"go.mau.fi/util/dbutil"
+	"maunium.net/go/mautrix/crypto"
+	"maunium.net/go/mautrix/crypto/cryptohelper"
 )
 
 func TestWrapErr(t *testing.T) {
@@ -26,6 +31,19 @@ func TestDefaultGetOlmMachine(t *testing.T) {
 	if mach != nil {
 		t.Errorf("expected nil machine, got %v", mach)
 	}
+
+	cWithCrypto := &Client{
+		Crypto: &cryptohelper.CryptoHelper{},
+	}
+
+	func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("expected panic, but did not panic")
+			}
+		}()
+		defaultGetOlmMachine(cWithCrypto)
+	}()
 }
 
 type mockRows struct {
@@ -80,4 +98,75 @@ func TestStderrWrappers(t *testing.T) {
 	stderr = errWriter{}
 	fprintfStderr("test")
 	fprintlnStderr("test")
+}
+
+func TestDefaultClearCryptoCache_NilAndMemory(t *testing.T) {
+	err := defaultClearCryptoCache(context.Background(), nil, "user")
+	if err == nil || err.Error() != "machine is nil" {
+		t.Errorf("expected machine is nil, got %v", err)
+	}
+
+	machMemory := &crypto.OlmMachine{CryptoStore: &crypto.MemoryStore{}}
+	if errMem := defaultClearCryptoCache(context.Background(), machMemory, "user"); errMem != nil {
+		t.Errorf("expected nil for memory store, got %v", errMem)
+	}
+}
+
+func TestDefaultClearCryptoCache_SQL(t *testing.T) {
+	sqlStore := &crypto.SQLCryptoStore{}
+	sqldb, errSQL := sql.Open("sqlite3", ":memory:")
+	if errSQL != nil {
+		t.Fatalf("sql.Open failed: %v", errSQL)
+	}
+	defer func() {
+		if errClose := sqldb.Close(); errClose != nil {
+			t.Logf("close error: %v", errClose)
+		}
+	}()
+	db, errDb := dbutil.NewWithDB(sqldb, "sqlite3")
+	if errDb != nil {
+		t.Fatalf("NewWithDB failed: %v", errDb)
+	}
+	sqlStore.DB = db
+	machSQL := &crypto.OlmMachine{CryptoStore: sqlStore}
+
+	t.Run("fails_on_keys_table", func(t *testing.T) {
+		err := defaultClearCryptoCache(context.Background(), machSQL, "user")
+		if err == nil || !strings.Contains(err.Error(), "delete keys:") {
+			t.Errorf("expected delete keys error, got %v", err)
+		}
+	})
+
+	if _, errExec := db.Exec(context.Background(), "CREATE TABLE crypto_cross_signing_keys (user_id TEXT)"); errExec != nil {
+		t.Fatalf("exec failed: %v", errExec)
+	}
+
+	t.Run("fails_on_devices_table", func(t *testing.T) {
+		err := defaultClearCryptoCache(context.Background(), machSQL, "user")
+		if err == nil || !strings.Contains(err.Error(), "delete devices:") {
+			t.Errorf("expected delete devices error, got %v", err)
+		}
+	})
+
+	if _, errExec := db.Exec(context.Background(), "CREATE TABLE crypto_device (user_id TEXT)"); errExec != nil {
+		t.Fatalf("exec failed: %v", errExec)
+	}
+
+	t.Run("fails_on_signatures_table", func(t *testing.T) {
+		err := defaultClearCryptoCache(context.Background(), machSQL, "user")
+		if err == nil || !strings.Contains(err.Error(), "delete signatures:") {
+			t.Errorf("expected delete signatures error, got %v", err)
+		}
+	})
+
+	if _, errExec := db.Exec(context.Background(), "CREATE TABLE crypto_cross_signing_signatures (signed_user_id TEXT, signer_user_id TEXT)"); errExec != nil {
+		t.Fatalf("exec failed: %v", errExec)
+	}
+
+	t.Run("success", func(t *testing.T) {
+		err := defaultClearCryptoCache(context.Background(), machSQL, "user")
+		if err != nil {
+			t.Errorf("expected success, got %v", err)
+		}
+	})
 }

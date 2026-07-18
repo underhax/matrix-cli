@@ -25,77 +25,61 @@ func decodeBase64(s string) ([]byte, error) {
 	return base64.RawURLEncoding.DecodeString(s)
 }
 
-func (c *Client) requestSecrets(ctx context.Context) {
+type secretItem struct {
+	ptr  *string
+	name id.Secret
+}
+
+func fetchSecretsList(ctx context.Context, c *Client, mach *crypto.OlmMachine, secrets []secretItem) []string {
+	var missing []string
+	for _, s := range secrets {
+		wasLocal := false
+		if mach.CryptoStore != nil {
+			val, err := cryptoStoreGetSecret(ctx, mach, s.name)
+			wasLocal = err == nil && val != ""
+		}
+
+		err := getOrRequestSecret(ctx, mach, s.name, func(val string) (bool, error) {
+			*s.ptr = val
+			return true, nil
+		}, 15*time.Second)
+
+		switch {
+		case err != nil || *s.ptr == "":
+			c.Log.Debug().Err(err).Str("secret", string(s.name)).Msg("Failed to obtain secret")
+			missing = append(missing, string(s.name))
+		case wasLocal:
+			c.Log.Debug().Str("secret", string(s.name)).Msg("Loaded secret directly from local database")
+		default:
+			c.Log.Debug().Str("secret", string(s.name)).Msg("Received secret from network")
+		}
+	}
+	return missing
+}
+
+func (c *Client) requestSecrets(ctx context.Context, onComplete func()) {
 	_, _ = fmt.Fprintf(os.Stderr, "Requesting cross-signing and megolm backup keys from trusted devices (own_device_id=%s)...\n", c.Matrix.DeviceID)
 
 	go func() {
+		defer func() {
+			if onComplete != nil {
+				onComplete()
+			}
+		}()
 		mach := getOlmMachine(c)
 		if mach == nil {
 			return
 		}
-		checkLocal := func(name id.Secret) bool {
-			if mach.CryptoStore != nil {
-				s, err := cryptoStoreGetSecret(ctx, mach, name)
-				return err == nil && s != ""
-			}
-			return false
-		}
-		masterLocal := checkLocal(id.SecretXSMaster)
-		selfLocal := checkLocal(id.SecretXSSelfSigning)
-		userLocal := checkLocal(id.SecretXSUserSigning)
-		backupLocal := checkLocal(id.SecretMegolmBackupV1)
-
 		var master, self, user, backupKey string
-		var errM, errS, errU, errB error
 
-		errM = getOrRequestSecret(ctx, mach, id.SecretXSMaster, func(s string) (bool, error) {
-			master = s
-			return true, nil
-		}, 15*time.Second)
-		errS = getOrRequestSecret(ctx, mach, id.SecretXSSelfSigning, func(s string) (bool, error) {
-			self = s
-			return true, nil
-		}, 15*time.Second)
-		errU = getOrRequestSecret(ctx, mach, id.SecretXSUserSigning, func(s string) (bool, error) {
-			user = s
-			return true, nil
-		}, 15*time.Second)
-		errB = getOrRequestSecret(ctx, mach, id.SecretMegolmBackupV1, func(s string) (bool, error) {
-			backupKey = s
-			return true, nil
-		}, 15*time.Second)
-
-		logStatus := func(name id.Secret, wasLocal bool, val string, err error) {
-			if err != nil || val == "" {
-				c.Log.Debug().Err(err).Str("secret", string(name)).Msg("Failed to obtain secret")
-				return
-			}
-			if wasLocal {
-				c.Log.Debug().Str("secret", string(name)).Msg("Loaded secret directly from local database")
-			} else {
-				c.Log.Debug().Str("secret", string(name)).Msg("Received secret from network")
-			}
+		secrets := []secretItem{
+			{&master, id.SecretXSMaster},
+			{&self, id.SecretXSSelfSigning},
+			{&user, id.SecretXSUserSigning},
+			{&backupKey, id.SecretMegolmBackupV1},
 		}
 
-		logStatus(id.SecretXSMaster, masterLocal, master, errM)
-		logStatus(id.SecretXSSelfSigning, selfLocal, self, errS)
-		logStatus(id.SecretXSUserSigning, userLocal, user, errU)
-		logStatus(id.SecretMegolmBackupV1, backupLocal, backupKey, errB)
-
-		var missing []string
-		for _, v := range []struct {
-			name id.Secret
-			val  string
-		}{
-			{id.SecretXSMaster, master},
-			{id.SecretXSSelfSigning, self},
-			{id.SecretXSUserSigning, user},
-			{id.SecretMegolmBackupV1, backupKey},
-		} {
-			if v.val == "" {
-				missing = append(missing, string(v.name))
-			}
-		}
+		missing := fetchSecretsList(ctx, c, mach, secrets)
 
 		if len(missing) > 0 {
 			_, _ = fmt.Fprintf(os.Stderr, "Failed to receive the following keys (own_device_id=%s): %s\n", mach.Client.DeviceID, strings.Join(missing, ", "))

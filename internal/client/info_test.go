@@ -343,7 +343,19 @@ func TestDevices(t *testing.T) {
 
 			origGetOlmMachine := getOlmMachine
 			getOlmMachine = func(_ *Client) *crypto.OlmMachine { return &crypto.OlmMachine{} }
-			defer func() { getOlmMachine = origGetOlmMachine }()
+			origFetchKeys := fetchKeys
+			fetchKeys = func(_ context.Context, _ *crypto.OlmMachine, _ []id.UserID, _ bool) (map[id.UserID]map[id.DeviceID]*id.Device, error) {
+				return make(map[id.UserID]map[id.DeviceID]*id.Device), nil
+			}
+			origClearCryptoCache := clearCryptoCache
+			clearCryptoCache = func(_ context.Context, _ *crypto.OlmMachine, _ id.UserID) error {
+				return nil
+			}
+			defer func() {
+				getOlmMachine = origGetOlmMachine
+				fetchKeys = origFetchKeys
+				clearCryptoCache = origClearCryptoCache
+			}()
 
 			origGetOrFetchDevice := getOrFetchDevice
 			getOrFetchDevice = func(_ context.Context, _ *crypto.OlmMachine, _ id.UserID, devID id.DeviceID) (*id.Device, error) {

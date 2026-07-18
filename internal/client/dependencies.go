@@ -68,6 +68,17 @@ func defaultCryptoStorePutSecret(ctx context.Context, mach *crypto.OlmMachine, s
 
 var cryptoStorePutSecret = defaultCryptoStorePutSecret
 
+func defaultClearCrossSigningSecrets(ctx context.Context, mach *crypto.OlmMachine) error {
+	sqlStore, ok := mach.CryptoStore.(*crypto.SQLCryptoStore)
+	if !ok {
+		return nil
+	}
+	_, err := sqlStore.DB.Exec(ctx, "DELETE FROM crypto_secrets WHERE account_id=$1 AND name LIKE 'm.cross_signing.%'", sqlStore.AccountID)
+	return wrapErr(err, "delete cross-signing secrets failed: %w")
+}
+
+var clearCrossSigningSecrets = defaultClearCrossSigningSecrets
+
 func defaultGenerateAndUploadCrossSigningKeys(ctx context.Context, mach *crypto.OlmMachine, cb func(*mautrix.RespUserInteractive) any, masterKey string) (string, *crypto.CrossSigningKeysCache, error) {
 	key, cache, err := mach.GenerateAndUploadCrossSigningKeys(ctx, cb, masterKey)
 	return key, cache, wrapErr(err, "generate failed: %w")
@@ -99,6 +110,20 @@ func defaultOwnIdentity(mach *crypto.OlmMachine) *id.Device {
 }
 
 var ownIdentity = defaultOwnIdentity
+
+func defaultGetCrossSigningPublicKeys(ctx context.Context, mach *crypto.OlmMachine, userID id.UserID) (*crypto.CrossSigningPublicKeysCache, error) {
+	pubkeys, err := mach.GetCrossSigningPublicKeys(ctx, userID)
+	return pubkeys, wrapErr(err, "get cross-signing public keys failed: %w")
+}
+
+var getCrossSigningPublicKeys = defaultGetCrossSigningPublicKeys
+
+func defaultGetOwnCrossSigningPublicKeys(ctx context.Context, mach *crypto.OlmMachine) (*crypto.CrossSigningPublicKeysCache, error) {
+	pubkeys, err := mach.GetOwnCrossSigningPublicKeys(ctx)
+	return pubkeys, wrapErr(err, "get own cross-signing public keys failed: %w")
+}
+
+var getOwnCrossSigningPublicKeys = defaultGetOwnCrossSigningPublicKeys
 
 func defaultSetupMegolmBackup(ctx context.Context, c *Client, recoveryKey string) error {
 	return c.setupMegolmBackup(ctx, recoveryKey)
@@ -356,3 +381,36 @@ func fprintlnStderr(a ...any) {
 		return
 	}
 }
+
+func defaultClearCryptoCache(ctx context.Context, mach *crypto.OlmMachine, userID id.UserID) error {
+	if mach == nil {
+		return errors.New("machine is nil")
+	}
+	if sqlStore, ok := mach.CryptoStore.(*crypto.SQLCryptoStore); ok {
+		if _, err := sqlStore.DB.Exec(ctx, "DELETE FROM crypto_cross_signing_keys WHERE user_id=$1", userID); err != nil {
+			return wrapErr(err, "delete keys: %w")
+		}
+		if _, err := sqlStore.DB.Exec(ctx, "DELETE FROM crypto_device WHERE user_id=$1", userID); err != nil {
+			return wrapErr(err, "delete devices: %w")
+		}
+		if _, err := sqlStore.DB.Exec(ctx, "DELETE FROM crypto_cross_signing_signatures WHERE signed_user_id=$1 OR signer_user_id=$1", userID); err != nil {
+			return wrapErr(err, "delete signatures: %w")
+		}
+	}
+	return nil
+}
+
+var clearCryptoCache = defaultClearCryptoCache
+
+func defaultClearCrossSigningSignatures(ctx context.Context, mach *crypto.OlmMachine, userID string) error {
+	if mach == nil {
+		return errors.New("machine is nil")
+	}
+	if sqlStore, ok := mach.CryptoStore.(*crypto.SQLCryptoStore); ok {
+		_, err := sqlStore.DB.Exec(ctx, "DELETE FROM crypto_cross_signing_signatures WHERE signed_user_id=$1 OR signer_user_id=$1", userID)
+		return wrapErr(err, "clear signatures failed: %w")
+	}
+	return nil
+}
+
+var clearCrossSigningSignatures = defaultClearCrossSigningSignatures

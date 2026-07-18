@@ -154,11 +154,13 @@ func runRequestSecretsTest(t *testing.T, tt requestSecretsTest) {
 	}
 	defer func() { ownIdentity = defaultOwnIdentity }()
 
-	c.requestSecrets(ctx)
+	complete := make(chan struct{})
+	c.requestSecrets(ctx, func() {
+		close(complete)
+	})
 
 	select {
-	case <-done:
-		time.Sleep(10 * time.Millisecond)
+	case <-complete:
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for requestSecrets goroutine")
 	}

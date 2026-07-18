@@ -8,9 +8,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto"
+	"maunium.net/go/mautrix/crypto/olm"
 	"maunium.net/go/mautrix/crypto/verificationhelper"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -73,6 +75,11 @@ func TestRefreshCrossSigningKeys(t *testing.T) {
 			}
 			defer func() { fetchKeys = defaultFetchKeys }()
 
+			getCrossSigningPublicKeys = func(_ context.Context, _ *crypto.OlmMachine, _ id.UserID) (*crypto.CrossSigningPublicKeysCache, error) {
+				return nil, errors.New("mock not found")
+			}
+			defer func() { getCrossSigningPublicKeys = defaultGetCrossSigningPublicKeys }()
+
 			c.refreshCrossSigningKeys(context.Background(), "test_user")
 		})
 	}
@@ -113,7 +120,11 @@ func setupTestDB(t *testing.T, sqlStore *crypto.SQLCryptoStore, dbExecErr error)
 
 func TestVerify(t *testing.T) {
 	c := &Client{
-		Matrix: &mautrix.Client{},
+		Matrix: &mautrix.Client{
+			DeviceID: "test_device",
+			UserID:   "test_user",
+		},
+		Log: zerolog.Nop(),
 	}
 
 	tests := []struct {
@@ -170,9 +181,27 @@ func TestVerify(t *testing.T) {
 			defer func() { startVerification = defaultStartVerification }()
 
 			getOlmMachine = func(_ *Client) *crypto.OlmMachine {
-				return nil
+				return &crypto.OlmMachine{}
 			}
 			defer func() { getOlmMachine = defaultGetOlmMachine }()
+
+			getCrossSigningPublicKeys = func(_ context.Context, _ *crypto.OlmMachine, _ id.UserID) (*crypto.CrossSigningPublicKeysCache, error) {
+				return nil, errors.New("mock not found")
+			}
+			defer func() { getCrossSigningPublicKeys = defaultGetCrossSigningPublicKeys }()
+
+			getOwnCrossSigningPublicKeys = func(_ context.Context, _ *crypto.OlmMachine) (*crypto.CrossSigningPublicKeysCache, error) {
+				if tt.name == "empty target user, sync success" {
+					return &crypto.CrossSigningPublicKeysCache{MasterKey: id.Ed25519("test_master_key")}, nil
+				}
+				return nil, errors.New("mock not found")
+			}
+			defer func() { getOwnCrossSigningPublicKeys = defaultGetOwnCrossSigningPublicKeys }()
+
+			fetchKeys = func(_ context.Context, _ *crypto.OlmMachine, _ []id.UserID, _ bool) (map[id.UserID]map[id.DeviceID]*id.Device, error) {
+				return nil, errors.New("mock not found")
+			}
+			defer func() { fetchKeys = defaultFetchKeys }()
 
 			err := c.Verify(context.Background(), tt.targetUser)
 			if (err != nil) != tt.expectedErr {
@@ -394,4 +423,167 @@ func TestShowSAS(t *testing.T) {
 		h.ShowSAS(context.Background(), "txn5", emojis, emojiDescs, nil)
 		wg.Wait()
 	})
+}
+
+func TestCheckStalePrivateKeys(t *testing.T) {
+	c := &Client{
+		Matrix: &mautrix.Client{
+			UserID: "stale_test_user",
+		},
+		Log: zerolog.Nop(),
+	}
+
+	pk1, err := olm.NewPKSigning()
+	if err != nil {
+		t.Fatalf("failed to generate pk1: %v", err)
+	}
+	pk2, err := olm.NewPKSigning()
+	if err != nil {
+		t.Fatalf("failed to generate pk2: %v", err)
+	}
+
+	tests := []struct {
+		pubkeysErr      error
+		clearSecretsErr error
+		mach            *crypto.OlmMachine
+		pubkeys         *crypto.CrossSigningPublicKeysCache
+		name            string
+		userID          id.UserID
+		expectKeysNil   bool
+		nilMatrix       bool
+	}{
+		{
+			name:   "different user",
+			userID: "other_user_id",
+			mach:   &crypto.OlmMachine{},
+		},
+		{
+			name:   "mach cross signing keys nil",
+			userID: c.Matrix.UserID,
+			mach:   &crypto.OlmMachine{},
+		},
+		{
+			name:   "mach master key nil",
+			userID: c.Matrix.UserID,
+			mach: &crypto.OlmMachine{
+				CrossSigningKeys: &crypto.CrossSigningKeysCache{},
+			},
+		},
+		{
+			name:   "get pubkeys error",
+			userID: c.Matrix.UserID,
+			mach: &crypto.OlmMachine{
+				CrossSigningKeys: &crypto.CrossSigningKeysCache{
+					MasterKey:      pk1,
+					SelfSigningKey: pk1,
+					UserSigningKey: pk1,
+				},
+			},
+			pubkeysErr: errors.New("err"),
+		},
+		{
+			name:   "pubkeys nil",
+			userID: c.Matrix.UserID,
+			mach: &crypto.OlmMachine{
+				CrossSigningKeys: &crypto.CrossSigningKeysCache{
+					MasterKey:      pk1,
+					SelfSigningKey: pk1,
+					UserSigningKey: pk1,
+				},
+			},
+			pubkeys: nil,
+		},
+		{
+			name:   "pubkeys master key empty",
+			userID: c.Matrix.UserID,
+			mach: &crypto.OlmMachine{
+				CrossSigningKeys: &crypto.CrossSigningKeysCache{
+					MasterKey:      pk1,
+					SelfSigningKey: pk1,
+					UserSigningKey: pk1,
+				},
+			},
+			pubkeys: &crypto.CrossSigningPublicKeysCache{MasterKey: ""},
+		},
+		{
+			name:   "keys match",
+			userID: c.Matrix.UserID,
+			mach: &crypto.OlmMachine{
+				CrossSigningKeys: &crypto.CrossSigningKeysCache{
+					MasterKey:      pk1,
+					SelfSigningKey: pk1,
+					UserSigningKey: pk1,
+				},
+			},
+			pubkeys: &crypto.CrossSigningPublicKeysCache{MasterKey: pk1.PublicKey()},
+		},
+		{
+			name:   "keys mismatch, clear success",
+			userID: c.Matrix.UserID,
+			mach: &crypto.OlmMachine{
+				CrossSigningKeys: &crypto.CrossSigningKeysCache{
+					MasterKey:      pk1,
+					SelfSigningKey: pk1,
+					UserSigningKey: pk1,
+				},
+			},
+			pubkeys:       &crypto.CrossSigningPublicKeysCache{MasterKey: pk2.PublicKey()},
+			expectKeysNil: true,
+		},
+		{
+			name:   "keys mismatch, clear fail",
+			userID: c.Matrix.UserID,
+			mach: &crypto.OlmMachine{
+				CrossSigningKeys: &crypto.CrossSigningKeysCache{
+					MasterKey:      pk1,
+					SelfSigningKey: pk1,
+					UserSigningKey: pk1,
+				},
+			},
+			pubkeys:         &crypto.CrossSigningPublicKeysCache{MasterKey: pk2.PublicKey()},
+			clearSecretsErr: errors.New("clear err"),
+			expectKeysNil:   true,
+		},
+		{
+			name:      "matrix client is nil",
+			userID:    c.Matrix.UserID,
+			nilMatrix: true,
+			mach: &crypto.OlmMachine{
+				CrossSigningKeys: &crypto.CrossSigningKeysCache{
+					MasterKey:      pk1,
+					SelfSigningKey: pk1,
+					UserSigningKey: pk1,
+				},
+			},
+			pubkeys: &crypto.CrossSigningPublicKeysCache{MasterKey: pk2.PublicKey()},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			getCrossSigningPublicKeys = func(_ context.Context, _ *crypto.OlmMachine, _ id.UserID) (*crypto.CrossSigningPublicKeysCache, error) {
+				return tt.pubkeys, tt.pubkeysErr
+			}
+			defer func() { getCrossSigningPublicKeys = defaultGetCrossSigningPublicKeys }()
+
+			clearCrossSigningSecrets = func(_ context.Context, _ *crypto.OlmMachine) error {
+				return tt.clearSecretsErr
+			}
+			defer func() { clearCrossSigningSecrets = defaultClearCrossSigningSecrets }()
+
+			client := c
+			if tt.nilMatrix {
+				client = &Client{Log: zerolog.Nop()}
+			}
+
+			client.checkStalePrivateKeys(context.Background(), tt.mach, tt.userID)
+
+			if tt.expectKeysNil && tt.mach.CrossSigningKeys != nil {
+				t.Errorf("expected CrossSigningKeys to be nil, got %v", tt.mach.CrossSigningKeys)
+			}
+			if !tt.expectKeysNil && !tt.nilMatrix && tt.name != "mach cross signing keys nil" && tt.name != "different user" && tt.mach.CrossSigningKeys == nil {
+				t.Errorf("expected CrossSigningKeys to be preserved")
+			}
+		})
+	}
 }

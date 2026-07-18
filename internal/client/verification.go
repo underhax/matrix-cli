@@ -22,19 +22,30 @@ func (c *Client) refreshCrossSigningKeys(ctx context.Context, userID id.UserID) 
 	if mach == nil {
 		return
 	}
-	if sqlStore, ok := mach.CryptoStore.(*crypto.SQLCryptoStore); ok {
-		if _, err := sqlStore.DB.Exec(ctx, "DELETE FROM crypto_cross_signing_keys WHERE user_id=$1", userID); err != nil {
-			c.Log.Debug().Err(err).Msg("failed to clean old keys")
-		}
-		if _, err := sqlStore.DB.Exec(ctx, "DELETE FROM crypto_devices WHERE user_id=$1", userID); err != nil {
-			c.Log.Debug().Err(err).Msg("failed to clean old devices")
-		}
-		if _, err := sqlStore.DB.Exec(ctx, "DELETE FROM crypto_cross_signing_signatures WHERE user_id=$1 OR sign_user_id=$1", userID); err != nil {
-			c.Log.Debug().Err(err).Msg("failed to clean old signatures")
-		}
+	if err := clearCryptoCache(ctx, mach, userID); err != nil {
+		c.Log.Debug().Err(err).Msg("failed to clean crypto cache")
 	}
 	if _, err := fetchKeys(ctx, mach, []id.UserID{userID}, true); err != nil {
 		c.Log.Debug().Err(err).Msg("failed to fetch keys")
+	}
+	c.checkStalePrivateKeys(ctx, mach, userID)
+}
+
+func (c *Client) checkStalePrivateKeys(ctx context.Context, mach *crypto.OlmMachine, userID id.UserID) {
+	if c.Matrix == nil || userID != c.Matrix.UserID || mach.CrossSigningKeys == nil || mach.CrossSigningKeys.MasterKey == nil {
+		return
+	}
+	pubkeys, err := getCrossSigningPublicKeys(ctx, mach, userID)
+	if err != nil || pubkeys == nil || pubkeys.MasterKey == "" {
+		return
+	}
+	localPub := mach.CrossSigningKeys.PublicKeys()
+	if pubkeys.MasterKey.String() != localPub.MasterKey.String() {
+		c.Log.Debug().Msg("Local private cross-signing keys are stale, dropping them")
+		mach.CrossSigningKeys = nil
+		if err := clearCrossSigningSecrets(ctx, mach); err != nil {
+			c.Log.Debug().Err(err).Msg("Failed to clear stale cross-signing secrets from db")
+		}
 	}
 }
 
@@ -42,6 +53,24 @@ func (c *Client) refreshCrossSigningKeys(ctx context.Context, userID id.UserID) 
 // raised by SyncWithContext. It is used to drive interactive device-verification flows that
 // rely on the long-poll context to deliver incoming verification requests.
 func (c *Client) Verify(ctx context.Context, targetUser string) error {
+	c.refreshCrossSigningKeys(ctx, c.Matrix.UserID)
+
+	mach := getOlmMachine(c)
+	if mach != nil {
+		if pub, err := getOwnCrossSigningPublicKeys(ctx, mach); err == nil && pub != nil {
+			mkStr := pub.MasterKey.String()
+			if len(mkStr) > 8 {
+				mkStr = mkStr[:8] + "..."
+			}
+			c.Log.Debug().
+				Str("device_id", string(c.Matrix.DeviceID)).
+				Str("master_key", mkStr).
+				Msg("Current identity keys before verification")
+		} else {
+			c.Log.Debug().Err(err).Msg("Failed to get own master key or it is nil")
+		}
+	}
+
 	if targetUser == "" {
 		fprintlnStderr("Waiting for verification requests. Trigger verification from another device...")
 		if err := matrixSyncWithContext(ctx, c.Matrix); err != nil {
@@ -53,7 +82,9 @@ func (c *Client) Verify(ctx context.Context, targetUser string) error {
 	userID := id.UserID(targetUser)
 	fprintfStderr("Initiating verification with %s...\n", userID)
 
-	c.refreshCrossSigningKeys(ctx, userID)
+	if userID != c.Matrix.UserID {
+		c.refreshCrossSigningKeys(ctx, userID)
+	}
 
 	txnID, err := startVerification(ctx, c.VH, userID)
 	if err != nil {
@@ -72,6 +103,7 @@ func (c *Client) Verify(ctx context.Context, targetUser string) error {
 // to enable headless SAS flow without manual initiation.
 func (h *VerificationHandler) VerificationRequested(ctx context.Context, txnID id.VerificationTransactionID, from id.UserID, fromDevice id.DeviceID) {
 	fprintfStderr("\nIncoming verification request from %s (%s).\nAuto-accepting transaction %s...\n", from, fromDevice, txnID)
+	h.client.refreshCrossSigningKeys(ctx, from)
 	go func() {
 		if err := acceptVerification(ctx, h.client.VH, txnID); err != nil {
 			fprintfStderr("Failed to accept verification: %v\n", err)
@@ -104,7 +136,9 @@ func (h *VerificationHandler) VerificationCancelled(_ context.Context, txnID id.
 func (h *VerificationHandler) VerificationDone(ctx context.Context, txnID id.VerificationTransactionID, _ event.VerificationMethod) {
 	h.client.Log.Debug().Str("txn_id", string(txnID)).Msg("Verification done successfully!")
 	bgCtx := context.WithoutCancel(ctx)
-	h.client.requestSecrets(bgCtx)
+	h.client.requestSecrets(bgCtx, func() {
+		fprintfStderr("\nVerification completed successfully. Press Ctrl+C to exit.\n")
+	})
 }
 
 // ShowSAS presents the emoji comparison challenge to the operator via stderr/stdin
