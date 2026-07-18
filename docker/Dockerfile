@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN useradd -m -u 10001 -s /bin/bash bot
 
-RUN mkdir -p /home/bot/.ssh /home/bot/keys /home/bot/data \
+RUN mkdir -p /home/bot/.ssh /home/bot/keys /home/bot/.config/matrix-cli \
     && chown -R bot:bot /home/bot
 
 COPY --from=builder /matrix-cli /usr/local/bin/matrix-cli

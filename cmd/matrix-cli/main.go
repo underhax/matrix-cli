@@ -53,6 +53,8 @@ const (
 	flagRecoveryKey     = "--recovery-key"
 	flagRooms           = "--rooms"
 	flagMessage         = "--message"
+	flagHTML            = "--html"
+	flagMarkdown        = "--markdown"
 	flagVerbose         = "--verbose"
 	flagDebug           = "--debug"
 	flagDataDir         = "--data-dir"
@@ -85,6 +87,8 @@ type cliOptions struct {
 	recoveryKey     *string
 	rooms           *string
 	msg             *string
+	html            *bool
+	markdown        *bool
 	verbose         *bool
 	debugLevel      *int
 	dataDir         *string
@@ -110,6 +114,8 @@ func setupFlags() (*flag.FlagSet, cliOptions) {
 	recoveryKey := fs.String(flagRecoveryKey[2:], "", "Recovery key for SSSS (for bootstrap)")
 	rooms := fs.String(flagRooms[2:], "", "Target room ID(s) (space-separated for send, room-info, listen)")
 	msg := fs.String(flagMessage[2:], "", "Message body (for send)")
+	html := fs.Bool(flagHTML[2:], false, "Send message as HTML formatted text (for send)")
+	markdown := fs.Bool(flagMarkdown[2:], false, "Parse message as Markdown and send formatted text (for send)")
 	verbose := fs.Bool(flagVerbose[2:], false, "Enable verbose output (e.g. detailed room info)")
 	debugLevel := 0
 	fs.Var(&logger.LevelFlag{Level: &debugLevel}, flagDebug[2:], "Enable debug logging (use --debug or --debug=2)")
@@ -141,6 +147,8 @@ func setupFlags() (*flag.FlagSet, cliOptions) {
 		recoveryKey:     recoveryKey,
 		rooms:           rooms,
 		msg:             msg,
+		html:            html,
+		markdown:        markdown,
 		verbose:         verbose,
 		debugLevel:      &debugLevel,
 		dataDir:         dataDir,
@@ -202,7 +210,7 @@ func run(args []string) error {
 		return handleAuth(ctx, *opts.server, *opts.user, *opts.pass, *opts.device, *opts.ssoCallbackPort, sessionFile)
 	}
 
-	return handleOperations(ctx, &log, *opts.mode, *opts.rooms, *opts.msg, *opts.user, *opts.newKeys, *opts.recoveryKey, *opts.verbose, sessionFile, dbFile, pickleFile)
+	return handleOperations(ctx, &log, *opts.mode, *opts.rooms, *opts.msg, *opts.user, *opts.newKeys, *opts.recoveryKey, *opts.verbose, *opts.html, *opts.markdown, sessionFile, dbFile, pickleFile)
 }
 
 func validateInput(mode, server, user, rooms, sessionFile, dbFile, pickleFile string) []string {
@@ -298,7 +306,7 @@ func handleAuth(ctx context.Context, server, user, pass, device, ssoCallbackPort
 	return nil
 }
 
-func handleOperations(ctx context.Context, log *logger.Logger, mode, rooms, msg, targetUser string, newKeys bool, recoveryKey string, verbose bool, sessionFile, dbFile, pickleFile string) error {
+func handleOperations(ctx context.Context, log *logger.Logger, mode, rooms, msg, targetUser string, newKeys bool, recoveryKey string, verbose, html, markdown bool, sessionFile, dbFile, pickleFile string) error {
 	session, err := config.Load(sessionFile)
 	if err != nil {
 		return fmt.Errorf("failed to load session (run --mode auth first): %w", err)
@@ -327,7 +335,7 @@ func handleOperations(ctx context.Context, log *logger.Logger, mode, rooms, msg,
 		return fmt.Errorf("client initialization failed: %w", err)
 	}
 
-	return executeMode(ctx, cli, mode, rooms, msg, targetUser, newKeys, recoveryKey, verbose)
+	return executeMode(ctx, cli, mode, rooms, msg, targetUser, newKeys, recoveryKey, verbose, html, markdown)
 }
 
 func handleLogout(ctx context.Context, session *config.Session, db *sql.DB, dbClosed *bool, sessionFile, dbFile, pickleFile string) {
@@ -358,7 +366,7 @@ func handleLogout(ctx context.Context, session *config.Session, db *sql.DB, dbCl
 	}
 }
 
-func executeMode(ctx context.Context, cli *client.Client, mode, rooms, msg, targetUser string, newKeys bool, recoveryKey string, verbose bool) error {
+func executeMode(ctx context.Context, cli *client.Client, mode, rooms, msg, targetUser string, newKeys bool, recoveryKey string, verbose, html, markdown bool) error {
 	switch mode {
 	case modeBootstrap:
 		if err := cli.Bootstrap(ctx, newKeys, recoveryKey); err != nil {
@@ -372,7 +380,7 @@ func executeMode(ctx context.Context, cli *client.Client, mode, rooms, msg, targ
 		if rooms == "" || msg == "" {
 			return errors.New("--rooms and --message are required for send mode")
 		}
-		if err := cli.Send(ctx, rooms, msg); err != nil {
+		if err := cli.Send(ctx, rooms, msg, html, markdown); err != nil {
 			return fmt.Errorf("send error: %w", err)
 		}
 	case modeVerify:

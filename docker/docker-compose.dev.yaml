@@ -23,7 +23,7 @@ services:
       - /tmp:mode=1777,noexec,nosuid
     volumes:
       - ./authorized_keys:/home/bot/.ssh/authorized_keys:ro
-      - ./bot_data:/home/bot/data
+      - ./bot_data:/home/bot/.config/matrix-cli
       - ./host_keys:/home/bot/keys
     security_opt:
       - no-new-privileges:true

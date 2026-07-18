@@ -43,6 +43,8 @@ type sendToRoomTestCase struct {
 	joinedMemStatus   int
 	sendMsgStatus     int
 	expectErr         bool
+	isHTML            bool
+	isMarkdown        bool
 }
 
 func TestSendToRoom(t *testing.T) {
@@ -109,6 +111,24 @@ func TestSendToRoom(t *testing.T) {
 			sendMsgStatus:    200,
 			expectErr:        false,
 		},
+		{
+			name:             "success_html",
+			roomID:           "!room_html:example.com",
+			message:          "<b>hello html</b>",
+			stateEventStatus: 404,
+			sendMsgStatus:    200,
+			expectErr:        false,
+			isHTML:           true,
+		},
+		{
+			name:             "success_markdown",
+			roomID:           "!room_md:example.com",
+			message:          "**hello markdown**",
+			stateEventStatus: 404,
+			sendMsgStatus:    200,
+			expectErr:        false,
+			isMarkdown:       true,
+		},
 	}
 
 	for i := range tests {
@@ -156,7 +176,7 @@ func TestSendToRoom(t *testing.T) {
 			matrixClient.StateStore = store
 
 			c := &Client{Matrix: matrixClient}
-			eventID, err := c.sendToRoom(context.Background(), tt.roomID, tt.message)
+			eventID, err := c.sendToRoom(context.Background(), tt.roomID, tt.message, tt.isHTML, tt.isMarkdown)
 
 			verifySendToRoomResult(t, &tt, eventID, err)
 		})
@@ -195,6 +215,8 @@ type sendTestCase struct {
 	stdoutErrNum      int
 	stderrErrNum      int
 	expectErr         bool
+	isHTML            bool
+	isMarkdown        bool
 }
 
 func TestSend(t *testing.T) {
@@ -300,7 +322,7 @@ func TestSend(t *testing.T) {
 			}
 			c := &Client{Matrix: matrixClient}
 
-			sendErr := c.Send(context.Background(), tt.roomsStr, tt.message)
+			sendErr := c.Send(context.Background(), tt.roomsStr, tt.message, tt.isHTML, tt.isMarkdown)
 
 			verifySendResult(t, &tt, sendErr, outBuf.String())
 		})

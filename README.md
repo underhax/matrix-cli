@@ -96,17 +96,24 @@ Examples:
 
 ### Sending Messages (`send`)
 ```text
-Usage: matrix-cli --mode send --rooms "<ID>" --message "<TEXT>" [--data-dir <PATH>]
-Send a message to one or more rooms.
+Usage: matrix-cli --mode send --rooms '<ID>' --message '<TEXT>' [--html | --markdown] [--data-dir <PATH>]
+Send a message to one or more rooms. Supports optional HTML or Markdown formatting.
 
 Examples:
+  # Send a standard text message:
   matrix-cli --mode send --rooms '!abc123:matrix.org' --message 'Hello!'
   matrix-cli --mode send --rooms '!abc123:matrix.org !def456:matrix.org' --message 'Broadcast!'
+
+  # Send a message parsed as Markdown:
+  matrix-cli --mode send --rooms '!abc123:matrix.org' --markdown --message '**Hello** from *Matrix CLI*!'
+
+  # Send a message with raw HTML tags:
+  matrix-cli --mode send --rooms '!abc123:matrix.org' --html --message '<b>Hello</b> from <i>Matrix CLI</i>!'
 ```
 
 ### Listening for Events (`listen`)
 ```text
-Usage: matrix-cli --mode listen [--rooms "<ID1> <ID2>"] [--data-dir <PATH>]
+Usage: matrix-cli --mode listen [--rooms '<ID1> <ID2>'] [--data-dir <PATH>]
 Listen for incoming messages and events. If --rooms is provided, only events from those rooms are processed.
 
 Examples:
@@ -125,7 +132,7 @@ Examples:
   matrix-cli --mode rooms --verbose
 ```
 ```text
-Usage: matrix-cli --mode room-info --rooms "<ID>" [--data-dir <PATH>]
+Usage: matrix-cli --mode room-info --rooms '<ID>' [--data-dir <PATH>]
 Get detailed info for specific room(s).
 
 Examples:
@@ -245,10 +252,11 @@ On first run, `matrix-cli` requires interactive login to create its session data
 #    Do NOT use your personal account — the bot account will be used
 #    for automated messaging and device verification.
 
-# Use the same BASE_DIR variable from the setup step
-docker compose -f "${BASE_DIR}/docker-compose.yaml" exec -it matrix-cli /bin/sh
+# Assuming your main VPS SSH port is 2223, and the Docker SSH port is 2222:
+# Connect to the container and create the tunnel in one step:
+ssh -i ~/.ssh/id_docker_key -o ProxyCommand="ssh -i ~/.ssh/id_server_key -W %h:%p -p 2223 root@remote_ip" -p 2222 -L 8080:127.0.0.1:8080 bot@127.0.0.1
 ```
-Once inside the container shell, refer to the **[Usage](#usage)** section above to:
+Once the secure SSH session is established, refer to the **[Usage](#usage)** section above to:
 1. Safely authenticate your new bot account.
 2. Setup E2EE cross-signing by either:
    - Generating new keys (`bootstrap`) — *Use this only if this is a brand new account with no prior devices or keys.*
@@ -271,7 +279,7 @@ The container will now run as a persistent background service, ready to accept i
 | Host path | Container path | Mode | Ownership requirement |
 |---|---|---|---|
 | `./authorized_keys` | `/home/bot/.ssh/authorized_keys` | `ro` | `chown 10001:10001`, `chmod 0600` |
-| `./bot_data/` | `/home/bot/data` | `rw` | `chown -R 10001:10001` |
+| `./bot_data/` | `/home/bot/.config/matrix-cli` | `rw` | `chown -R 10001:10001` |
 | `./host_keys/` | `/home/bot/keys` | `rw` | `chown -R 10001:10001` |
 
 ### SSH Host Key Persistence

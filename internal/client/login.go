@@ -118,8 +118,10 @@ func (h loginTokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	if _, wErr := w.Write([]byte("Authentication successful. You can safely close this window.")); wErr != nil {
+	htmlResp := `<!DOCTYPE html><html><head><link rel="icon" href="data:,"></head><body>Authentication successful. You can safely close this window.</body></html>`
+	if _, wErr := w.Write([]byte(htmlResp)); wErr != nil {
 		h.errChan <- fmt.Errorf("failed to write success response: %w", wErr)
 		return
 	}

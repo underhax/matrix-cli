@@ -51,7 +51,7 @@ func Start(ctx context.Context, label string, completed *atomic.Int32, total int
 		label:      label,
 		total:      total,
 		completed:  completed,
-		out:        os.Stdout,
+		out:        os.Stderr,
 		frames:     []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
 		interval:   150 * time.Millisecond,
 		timeSource: time.Now,

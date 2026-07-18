@@ -8,12 +8,13 @@ import (
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 )
 
 // Send fetches the room membership topology, populates the state store for key distribution,
 // and dispatches the message through the CryptoHelper auto-encryption pipeline to multiple rooms.
-func (c *Client) Send(ctx context.Context, roomsStr, message string) error {
+func (c *Client) Send(ctx context.Context, roomsStr, message string, isHTML, isMarkdown bool) error {
 	roomList := strings.Fields(roomsStr)
 	if len(roomList) == 0 {
 		return errors.New("no rooms specified")
@@ -27,7 +28,7 @@ func (c *Client) Send(ctx context.Context, roomsStr, message string) error {
 			"room_id": r,
 		}
 
-		eventID, err := c.sendToRoom(ctx, parsedRoom, message)
+		eventID, err := c.sendToRoom(ctx, parsedRoom, message, isHTML, isMarkdown)
 		if err != nil {
 			res[jsonKeyStatus] = "error"
 			res["error"] = err.Error()
@@ -50,7 +51,7 @@ func (c *Client) Send(ctx context.Context, roomsStr, message string) error {
 	return nil
 }
 
-func (c *Client) sendToRoom(ctx context.Context, parsedRoom id.RoomID, message string) (string, error) {
+func (c *Client) sendToRoom(ctx context.Context, parsedRoom id.RoomID, message string, isHTML, isMarkdown bool) (string, error) {
 	var encEvt event.EncryptionEventContent
 	err := c.Matrix.StateEvent(ctx, parsedRoom, event.StateEncryption, "", &encEvt)
 	if err != nil && !errors.Is(err, mautrix.MNotFound) {
@@ -74,9 +75,19 @@ func (c *Client) sendToRoom(ctx context.Context, parsedRoom id.RoomID, message s
 		}
 	}
 
-	content := &event.MessageEventContent{
-		MsgType: event.MsgText,
-		Body:    message,
+	var content *event.MessageEventContent
+	if isMarkdown {
+		rendered := format.RenderMarkdown(message, true, isHTML)
+		content = &rendered
+	} else {
+		content = &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    message,
+		}
+		if isHTML {
+			content.Format = event.FormatHTML
+			content.FormattedBody = message
+		}
 	}
 
 	resp, err := c.Matrix.SendMessageEvent(ctx, parsedRoom, event.EventMessage, content)
