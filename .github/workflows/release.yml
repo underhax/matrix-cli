@@ -72,7 +72,9 @@ jobs:
 
     steps:
       - name: Install Git and Zip
-        run: apt-get update && apt-get install -y git zip
+        run: |
+          apt-get update && apt-get install -y git zip
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Checkout Code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
