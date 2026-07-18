@@ -80,6 +80,7 @@ func (c *Client) Verify(ctx context.Context, targetUser string) error {
 	}
 
 	userID := id.UserID(targetUser)
+	c.ActiveVerificationUser = userID
 	fprintfStderr("Initiating verification with %s...\n", userID)
 
 	if userID != c.Matrix.UserID {
@@ -102,6 +103,7 @@ func (c *Client) Verify(ctx context.Context, targetUser string) error {
 // VerificationRequested handles incoming verification requests by auto-accepting the transaction
 // to enable headless SAS flow without manual initiation.
 func (h *VerificationHandler) VerificationRequested(ctx context.Context, txnID id.VerificationTransactionID, from id.UserID, fromDevice id.DeviceID) {
+	h.client.ActiveVerificationUser = from
 	fprintfStderr("\nIncoming verification request from %s (%s).\nAuto-accepting transaction %s...\n", from, fromDevice, txnID)
 	h.client.refreshCrossSigningKeys(ctx, from)
 	go func() {
@@ -136,8 +138,12 @@ func (h *VerificationHandler) VerificationCancelled(_ context.Context, txnID id.
 func (h *VerificationHandler) VerificationDone(ctx context.Context, txnID id.VerificationTransactionID, _ event.VerificationMethod) {
 	h.client.Log.Debug().Str("txn_id", string(txnID)).Msg("Verification done successfully!")
 	bgCtx := context.WithoutCancel(ctx)
-	h.client.requestSecrets(bgCtx, func() {
-		fprintfStderr("\nVerification completed successfully. Press Ctrl+C to exit.\n")
+	h.client.requestSecrets(bgCtx, func(isMaster bool) {
+		if !isMaster || h.client.ActiveVerificationUser != h.client.Matrix.UserID {
+			fprintfStderr("\nVerification completed successfully. Press Ctrl+C to exit.\n")
+		} else {
+			fprintfStderr("\nWaiting for secret requests from other device...\n")
+		}
 	})
 }
 

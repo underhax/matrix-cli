@@ -105,6 +105,17 @@ func defaultDebugHandleSecretRequest(ctx context.Context, c *Client, mach *crypt
 	})
 	if err != nil {
 		c.Log.Debug().Err(err).Str("own_device_id", ownDeviceID).Str("target_device_id", targetDeviceID).Msg("Failed to send encrypted secret")
+	} else {
+		_, _ = fmt.Fprintf(os.Stderr, "Successfully sent secret %s to %s.\n", content.Name, targetDeviceID)
+
+		c.secretsMu.Lock()
+		if c.secretTimer != nil {
+			c.secretTimer.Stop()
+		}
+		c.secretTimer = timeAfterFunc(1*time.Second, func() {
+			_, _ = fmt.Fprintf(os.Stderr, "\nAll requested secrets have been sent. Verification completed successfully. Press Ctrl+C to exit.\n")
+		})
+		c.secretsMu.Unlock()
 	}
 }
 

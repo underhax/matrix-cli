@@ -5,6 +5,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
+	"time"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto/cryptohelper"
@@ -18,11 +20,14 @@ import (
 // Client encapsulates the Matrix client, cryptographic state machine, and persistence layer
 // to orchestrate E2EE operations in a headless environment.
 type Client struct {
-	Matrix *mautrix.Client
-	Crypto *cryptohelper.CryptoHelper
-	DB     *sql.DB
-	VH     *verificationhelper.VerificationHelper
-	Log    logger.Logger
+	Matrix                 *mautrix.Client
+	Crypto                 *cryptohelper.CryptoHelper
+	DB                     *sql.DB
+	VH                     *verificationhelper.VerificationHelper
+	secretTimer            *time.Timer
+	Log                    logger.Logger
+	ActiveVerificationUser id.UserID
+	secretsMu              sync.Mutex
 }
 
 const (

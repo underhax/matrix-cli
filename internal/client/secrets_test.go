@@ -155,7 +155,7 @@ func runRequestSecretsTest(t *testing.T, tt requestSecretsTest) {
 	defer func() { ownIdentity = defaultOwnIdentity }()
 
 	complete := make(chan struct{})
-	c.requestSecrets(ctx, func() {
+	c.requestSecrets(ctx, func(_ bool) {
 		close(complete)
 	})
 

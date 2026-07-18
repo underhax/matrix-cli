@@ -30,8 +30,9 @@ type secretItem struct {
 	name id.Secret
 }
 
-func fetchSecretsList(ctx context.Context, c *Client, mach *crypto.OlmMachine, secrets []secretItem) []string {
+func fetchSecretsList(ctx context.Context, c *Client, mach *crypto.OlmMachine, secrets []secretItem) ([]string, bool) {
 	var missing []string
+	fromNetwork := false
 	for _, s := range secrets {
 		wasLocal := false
 		if mach.CryptoStore != nil {
@@ -51,23 +52,22 @@ func fetchSecretsList(ctx context.Context, c *Client, mach *crypto.OlmMachine, s
 		case wasLocal:
 			c.Log.Debug().Str("secret", string(s.name)).Msg("Loaded secret directly from local database")
 		default:
+			fromNetwork = true
 			c.Log.Debug().Str("secret", string(s.name)).Msg("Received secret from network")
 		}
 	}
-	return missing
+	return missing, fromNetwork
 }
 
-func (c *Client) requestSecrets(ctx context.Context, onComplete func()) {
+func (c *Client) requestSecrets(ctx context.Context, onComplete func(isMaster bool)) {
 	_, _ = fmt.Fprintf(os.Stderr, "Requesting cross-signing and megolm backup keys from trusted devices (own_device_id=%s)...\n", c.Matrix.DeviceID)
 
 	go func() {
-		defer func() {
-			if onComplete != nil {
-				onComplete()
-			}
-		}()
 		mach := getOlmMachine(c)
 		if mach == nil {
+			if onComplete != nil {
+				onComplete(false)
+			}
 			return
 		}
 		var master, self, user, backupKey string
@@ -79,7 +79,14 @@ func (c *Client) requestSecrets(ctx context.Context, onComplete func()) {
 			{&backupKey, id.SecretMegolmBackupV1},
 		}
 
-		missing := fetchSecretsList(ctx, c, mach, secrets)
+		missing, fromNetwork := fetchSecretsList(ctx, c, mach, secrets)
+
+		defer func() {
+			if onComplete != nil {
+				isMaster := !fromNetwork && len(missing) == 0
+				onComplete(isMaster)
+			}
+		}()
 
 		if len(missing) > 0 {
 			_, _ = fmt.Fprintf(os.Stderr, "Failed to receive the following keys (own_device_id=%s): %s\n", mach.Client.DeviceID, strings.Join(missing, ", "))

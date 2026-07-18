@@ -161,9 +161,7 @@ func TestOnSecretRequest(_ *testing.T) {
 
 	origGetCryptoMachine := getCryptoMachine
 	defer func() { getCryptoMachine = origGetCryptoMachine }()
-	getCryptoMachine = func(_ *cryptohelper.CryptoHelper) *crypto.OlmMachine {
-		return nil
-	}
+	getCryptoMachine = mockGetCryptoMachineNil
 
 	evtValid := &event.Event{
 		Sender: "@user:sub.example.com",
@@ -175,9 +173,7 @@ func TestOnSecretRequest(_ *testing.T) {
 	}
 	c.onSecretRequest(context.Background(), evtValid)
 
-	getCryptoMachine = func(_ *cryptohelper.CryptoHelper) *crypto.OlmMachine {
-		return &crypto.OlmMachine{}
-	}
+	getCryptoMachine = mockGetCryptoMachineEmpty
 
 	evtCancel := &event.Event{
 		Sender: "@user:sub.example.com",
@@ -197,13 +193,11 @@ func TestOnSecretRequest(_ *testing.T) {
 	origDoDebugHandleSecretRequest := doDebugHandleSecretRequest
 	defer func() { doDebugHandleSecretRequest = origDoDebugHandleSecretRequest }()
 
-	called := make(chan struct{})
-	doDebugHandleSecretRequest = func(_ context.Context, _ *Client, _ *crypto.OlmMachine, _ id.UserID, _ *event.SecretRequestEventContent) {
-		close(called)
-	}
+	testCalledChan = make(chan struct{})
+	doDebugHandleSecretRequest = mockDoDebugHandleSecretRequestClose
 
 	c.onSecretRequest(context.Background(), evtValid)
-	<-called
+	<-testCalledChan
 }
 
 func TestDebugHandleSecretRequest(_ *testing.T) {
@@ -249,53 +243,100 @@ func TestDebugHandleSecretRequest(_ *testing.T) {
 	req.RequestingDeviceID = "device2"
 
 	mach.Client.UserID = "@user:test4.example.com"
-	getOrFetchDevice = func(_ context.Context, _ *crypto.OlmMachine, _ id.UserID, _ id.DeviceID) (*id.Device, error) {
-		return nil, errors.New("device error")
-	}
+	getOrFetchDevice = mockGetOrFetchDeviceErr
 	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test4.example.com", req)
 
 	mach.Client.UserID = "@user:test5.example.com"
-	getOrFetchDevice = func(_ context.Context, _ *crypto.OlmMachine, _ id.UserID, _ id.DeviceID) (*id.Device, error) {
-		return &id.Device{DeviceID: "device3"}, nil
-	}
-	resolveTrustContext = func(_ context.Context, _ *crypto.OlmMachine, _ *id.Device) (id.TrustState, error) {
-		return 0, errors.New("trust error")
-	}
+	getOrFetchDevice = mockGetOrFetchDeviceSuccess
+	resolveTrustContext = mockResolveTrustContextErr
 	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test5.example.com", req)
 
 	mach.Client.UserID = "@user:test6.example.com"
-	resolveTrustContext = func(_ context.Context, _ *crypto.OlmMachine, _ *id.Device) (id.TrustState, error) {
-		return id.TrustStateCrossSignedUntrusted, nil
-	}
+	resolveTrustContext = mockResolveTrustContextUntrusted
 	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test6.example.com", req)
 
 	mach.Client.UserID = "@user:test7.example.com"
-	resolveTrustContext = func(_ context.Context, _ *crypto.OlmMachine, _ *id.Device) (id.TrustState, error) {
-		return id.TrustStateCrossSignedVerified, nil
-	}
-	getSecret = func(_ context.Context, _ *crypto.OlmMachine, _ id.Secret) (string, error) {
-		return "", errors.New("secret error")
-	}
+	resolveTrustContext = mockResolveTrustContextVerified
+	getSecret = mockGetSecretErr
 	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test7.example.com", req)
 
 	mach.Client.UserID = "@user:test8.example.com"
-	getSecret = func(_ context.Context, _ *crypto.OlmMachine, _ id.Secret) (string, error) {
-		return "", nil
-	}
+	getSecret = mockGetSecretEmpty
 	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test8.example.com", req)
 
 	mach.Client.UserID = "@user:test9.example.com"
-	getSecret = func(_ context.Context, _ *crypto.OlmMachine, _ id.Secret) (string, error) {
-		return "secret_value", nil
-	}
-	sendEncryptedToDevice = func(_ context.Context, _ *crypto.OlmMachine, _ *id.Device, _ event.Type, _ event.Content) error {
-		return errors.New("send error")
-	}
+	getSecret = mockGetSecretValue
+	sendEncryptedToDevice = mockSendEncryptedToDeviceErr
 	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test9.example.com", req)
 
 	mach.Client.UserID = "@user:test10.example.com"
-	sendEncryptedToDevice = func(_ context.Context, _ *crypto.OlmMachine, _ *id.Device, _ event.Type, _ event.Content) error {
-		return nil
-	}
+	sendEncryptedToDevice = mockSendEncryptedToDeviceSuccess
+
+	origTimeAfterFunc := timeAfterFunc
+	defer func() { timeAfterFunc = origTimeAfterFunc }()
+	timeAfterFunc = mockTimeAfterFunc
+
 	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test10.example.com", req)
+
+	mach.Client.UserID = "@user:test11.example.com"
+	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test11.example.com", req)
+}
+
+func mockTimeAfterFunc(_ time.Duration, f func()) *time.Timer {
+	f()
+	return time.NewTimer(0)
+}
+
+var testCalledChan chan struct{}
+
+func mockGetCryptoMachineNil(_ *cryptohelper.CryptoHelper) *crypto.OlmMachine {
+	return nil
+}
+
+func mockGetCryptoMachineEmpty(_ *cryptohelper.CryptoHelper) *crypto.OlmMachine {
+	return &crypto.OlmMachine{}
+}
+
+func mockDoDebugHandleSecretRequestClose(_ context.Context, _ *Client, _ *crypto.OlmMachine, _ id.UserID, _ *event.SecretRequestEventContent) {
+	close(testCalledChan)
+}
+
+func mockGetOrFetchDeviceErr(_ context.Context, _ *crypto.OlmMachine, _ id.UserID, _ id.DeviceID) (*id.Device, error) {
+	return nil, errors.New("device error")
+}
+
+func mockGetOrFetchDeviceSuccess(_ context.Context, _ *crypto.OlmMachine, _ id.UserID, _ id.DeviceID) (*id.Device, error) {
+	return &id.Device{DeviceID: "device3"}, nil
+}
+
+func mockResolveTrustContextErr(_ context.Context, _ *crypto.OlmMachine, _ *id.Device) (id.TrustState, error) {
+	return 0, errors.New("trust error")
+}
+
+func mockResolveTrustContextUntrusted(_ context.Context, _ *crypto.OlmMachine, _ *id.Device) (id.TrustState, error) {
+	return id.TrustStateCrossSignedUntrusted, nil
+}
+
+func mockResolveTrustContextVerified(_ context.Context, _ *crypto.OlmMachine, _ *id.Device) (id.TrustState, error) {
+	return id.TrustStateCrossSignedVerified, nil
+}
+
+func mockGetSecretErr(_ context.Context, _ *crypto.OlmMachine, _ id.Secret) (string, error) {
+	return "", errors.New("secret error")
+}
+
+func mockGetSecretEmpty(_ context.Context, _ *crypto.OlmMachine, _ id.Secret) (string, error) {
+	return "", nil
+}
+
+func mockGetSecretValue(_ context.Context, _ *crypto.OlmMachine, _ id.Secret) (string, error) {
+	return "secret_value", nil
+}
+
+func mockSendEncryptedToDeviceErr(_ context.Context, _ *crypto.OlmMachine, _ *id.Device, _ event.Type, _ event.Content) error {
+	return errors.New("send error")
+}
+
+func mockSendEncryptedToDeviceSuccess(_ context.Context, _ *crypto.OlmMachine, _ *id.Device, _ event.Type, _ event.Content) error {
+	return nil
 }

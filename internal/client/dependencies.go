@@ -298,10 +298,17 @@ func defaultFetchKeys(ctx context.Context, mach *crypto.OlmMachine, users []id.U
 var fetchKeys = defaultFetchKeys
 
 func defaultMatrixSyncWithContext(ctx context.Context, client *mautrix.Client) error {
-	return wrapErr(client.SyncWithContext(ctx), "sync failed: %w")
+	err := client.SyncWithContext(ctx)
+	return wrapErr(err, "sync failed: %w")
 }
 
 var matrixSyncWithContext = defaultMatrixSyncWithContext
+
+func defaultTimeAfterFunc(d time.Duration, f func()) *time.Timer {
+	return time.AfterFunc(d, f)
+}
+
+var timeAfterFunc = defaultTimeAfterFunc
 
 func defaultStartVerification(ctx context.Context, vh *verificationhelper.VerificationHelper, userID id.UserID) (id.VerificationTransactionID, error) {
 	txnID, err := vh.StartVerification(ctx, userID)

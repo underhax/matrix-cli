@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/dbutil"
@@ -303,22 +304,55 @@ func TestVerificationCancelled(_ *testing.T) {
 }
 
 func TestVerificationDone(_ *testing.T) {
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	getOlmMachine = func(_ *Client) *crypto.OlmMachine {
-		defer wg.Done()
-		return nil
-	}
-	defer func() { getOlmMachine = defaultGetOlmMachine }()
-
 	c := &Client{
 		Matrix: &mautrix.Client{DeviceID: "test"},
+		Log:    zerolog.Nop(),
 	}
 	h := &VerificationHandler{client: c}
 
+	var wg1 sync.WaitGroup
+	wg1.Add(1)
+	getOlmMachine = func(_ *Client) *crypto.OlmMachine {
+		defer wg1.Done()
+		return nil
+	}
 	h.VerificationDone(context.Background(), "txn123", "")
-	wg.Wait()
+	wg1.Wait()
+
+	l := zerolog.Nop()
+	getOlmMachine = func(_ *Client) *crypto.OlmMachine {
+		return &crypto.OlmMachine{
+			CryptoStore: &crypto.MemoryStore{},
+			Client:      &mautrix.Client{DeviceID: "test"},
+			Log:         &l,
+		}
+	}
+	cryptoStoreGetSecret = func(_ context.Context, _ *crypto.OlmMachine, _ id.Secret) (string, error) {
+		return "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", nil
+	}
+	getOrRequestSecret = func(_ context.Context, _ *crypto.OlmMachine, _ id.Secret, cb func(string) (bool, error), _ time.Duration) error {
+		if cb != nil {
+			_, err := cb("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	done := make(chan struct{})
+	origDoLoadSecrets := doLoadSecrets
+	doLoadSecrets = func(_ context.Context, _ *Client) {
+		close(done)
+	}
+
+	h.VerificationDone(context.Background(), "txn123", "")
+	<-done
+
+	doLoadSecrets = origDoLoadSecrets
+	getOlmMachine = defaultGetOlmMachine
+	cryptoStoreGetSecret = defaultCryptoStoreGetSecret
+	getOrRequestSecret = defaultGetOrRequestSecret
 }
 
 type errReader struct{ wg *sync.WaitGroup }
