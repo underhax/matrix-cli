@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,6 +20,7 @@ import (
 	"github.com/underhax/matrix-cli/internal/consts"
 	"github.com/underhax/matrix-cli/internal/logger"
 	"github.com/underhax/matrix-cli/internal/store"
+	"github.com/underhax/matrix-cli/internal/updater"
 	"github.com/underhax/matrix-cli/internal/validator"
 )
 
@@ -42,6 +44,9 @@ const (
 	modeRoomInfo  = "room-info"
 	modeDevices   = "devices"
 	modeLogout    = "logout"
+
+	cmdUpdate  = "update"
+	cmdVersion = "version"
 
 	flagMode            = "--mode"
 	flagServer          = "--server"
@@ -96,6 +101,7 @@ type cliOptions struct {
 
 func main() {
 	setUmask()
+	updater.CleanupWindowsOldFiles()
 	if err := run(os.Args[1:]); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		osExit(1)
@@ -157,7 +163,25 @@ func setupFlags() (*flag.FlagSet, cliOptions) {
 	return fs, opts
 }
 
+func checkCommands(args []string) (bool, error) {
+	if len(args) == 0 {
+		return false, nil
+	}
+	switch args[0] {
+	case cmdUpdate:
+		return true, handleUpdate(context.Background())
+	case cmdVersion:
+		fmt.Println(AppVersion)
+		return true, nil
+	}
+	return false, nil
+}
+
 func run(args []string) error {
+	if handled, err := checkCommands(args); handled {
+		return err
+	}
+
 	fs, opts := setupFlags()
 
 	if err := fs.Parse(args); err != nil {
@@ -416,6 +440,14 @@ func executeRoomsInfo(ctx context.Context, cli *client.Client, mode, rooms strin
 	}
 	if err := cli.RoomInfo(ctx, rooms); err != nil {
 		return fmt.Errorf("room info error: %w", err)
+	}
+	return nil
+}
+
+func handleUpdate(ctx context.Context) error {
+	httpClient := &http.Client{}
+	if err := updater.Update(ctx, httpClient, AppVersion); err != nil {
+		return fmt.Errorf("update failed: %w", err)
 	}
 	return nil
 }

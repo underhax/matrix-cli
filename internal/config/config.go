@@ -11,6 +11,9 @@ import (
 	"github.com/underhax/matrix-cli/internal/consts"
 )
 
+// EndpointUpdate is the endpoint for the latest release.
+var EndpointUpdate = "https://api.github.com/repos/underhax/matrix-cli/releases/latest"
+
 // Session represents the persisted matrix authentication state required for client initialization
 // without performing a new login request to the homeserver.
 type Session struct {

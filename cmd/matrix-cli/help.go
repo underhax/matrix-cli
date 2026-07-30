@@ -83,7 +83,8 @@ func printUsage(modeVal string) {
 func printGlobalUsage() {
 	fmt.Fprintf(os.Stderr, "matrix-cli - A headless Matrix client (%s)\n\n", AppVersion)
 	fmt.Fprintf(os.Stderr, "Usage:\n")
-	fmt.Fprintf(os.Stderr, "  matrix-cli --mode <mode> [options]\n\n")
+	fmt.Fprintf(os.Stderr, "  matrix-cli --mode <mode> [options]\n")
+	fmt.Fprintf(os.Stderr, "  matrix-cli update\n\n")
 	fmt.Fprintf(os.Stderr, "Modes:\n")
 	printModeList("")
 	fmt.Fprintf(os.Stderr, "Tip: Run 'matrix-cli --mode <mode> -h' for mode-specific help.\n\n")
@@ -93,6 +94,9 @@ func printGlobalUsage() {
 }
 
 func printUsageFooter(exclude string) {
+	fmt.Fprintf(os.Stderr, "\nOther commands:\n")
+	fmt.Fprintf(os.Stderr, "  update     Update the client to the latest version\n")
+	fmt.Fprintf(os.Stderr, "  version    Print the client version\n")
 	fmt.Fprintf(os.Stderr, "\nOther modes:\n")
 	printModeList(exclude)
 	fmt.Fprintf(os.Stderr, "Global Options:\n")

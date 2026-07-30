@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/underhax/matrix-cli/internal/config"
 	"github.com/underhax/matrix-cli/internal/consts"
 )
 
@@ -227,6 +228,17 @@ func TestRun(t *testing.T) {
 			args:      []string{flagMode, modeListen, flagDataDir, tmpDir},
 			wantErr:   true,
 		},
+		{
+			name:      "update command dev error",
+			errString: "update not available for development builds",
+			args:      []string{"update"},
+			wantErr:   true,
+		},
+		{
+			name:    "version command",
+			args:    []string{"version"},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -255,5 +267,39 @@ func TestRun(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestHandleUpdate_Dev(t *testing.T) {
+	oldAppVersion := AppVersion
+	defer func() { AppVersion = oldAppVersion }()
+	AppVersion = "dev"
+
+	err := handleUpdate(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "update not available for development builds") {
+		t.Errorf("expected dev build error, got %v", err)
+	}
+}
+
+func TestHandleUpdate_Success(t *testing.T) {
+	oldAppVersion := AppVersion
+	defer func() { AppVersion = oldAppVersion }()
+	AppVersion = "v1.1.0"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte(`{"tag_name":"v1.1.0","assets":[]}`)); err != nil {
+			panic(err)
+		}
+	}))
+	defer server.Close()
+
+	oldEndpoint := config.EndpointUpdate
+	defer func() { config.EndpointUpdate = oldEndpoint }()
+	config.EndpointUpdate = server.URL
+
+	err := handleUpdate(context.Background())
+	if err != nil {
+		t.Fatalf("expected nil, got %v", err)
 	}
 }
