@@ -40,5 +40,5 @@ COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod 0755 /entrypoint.sh
 
 EXPOSE 2222
-USER bot
+USER 10001
 ENTRYPOINT ["/entrypoint.sh"]

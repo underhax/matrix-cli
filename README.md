@@ -14,6 +14,7 @@ Currently, `matrix-cli` supports the following operations:
 - **Verification**: Start an interactive device verification (SAS) flow to support E2EE.
 - **Rooms Management**: List all joined rooms and fetch detailed information about specific rooms (including member counts, power levels, and encryption status) in JSON format.
 - **Devices**: List active devices for your account.
+- **Self Update**: Easily keep your client up to date by pulling the latest release binary directly from GitHub.
 
 This project relies on the excellent [mautrix-go](https://github.com/mautrix/go) library for all Matrix API interactions and cryptographic operations.
 
@@ -53,9 +54,9 @@ It is recommended to place the binary in your system's PATH (such as `/usr/local
    cd matrix-cli
    ```
 
-2. Compile the binary. **Important:** You must include the `goolm` tag to enable the pure-Go implementation of the Olm and Megolm cryptographic ratchets, which are required for E2EE support:
+2. Compile the binary. **Important:** You must include the `goolm` tag to enable the pure-Go implementation of the Olm and Megolm cryptographic ratchets, which are required for E2EE support. You can also optionally specify a custom build version using `ldflags`:
    ```bash
-   go build -tags goolm -o matrix-cli ./cmd/matrix-cli/
+   CGO_ENABLED=1 go build -tags goolm -ldflags "-X 'main.AppVersion=v0.0.1'" -o matrix-cli ./cmd/matrix-cli/
    ```
 
 ## Usage
@@ -162,13 +163,26 @@ Examples:
   matrix-cli --mode logout
 ```
 
+### Client Info & Updates (`version` & `update`)
+```text
+Usage: matrix-cli version
+Print the current version of the client.
+
+Usage: matrix-cli update
+Fetch and install the latest release directly from GitHub.
+
+Examples:
+  matrix-cli version
+  matrix-cli update
+```
+
 ### Global Options
 All commands support the `--data-dir` flag to specify where the session and database files are stored. By default, this points to your OS's configuration directory (e.g., `~/.config/matrix-cli`).
 
 ## Docker Deployment
 
 <details>
-<summary><b>📦 Docker Deployment & SSH Gateway (Click to expand)</b></summary>
+<summary>Docker Deployment & SSH Gateway (Click to expand)</summary>
 
 A minimal, hardened Docker container is available via GHCR (`ghcr.io/underhax/matrix-cli`). It runs `matrix-cli` behind an SSH reverse tunnel, acting as a secure Matrix protocol gateway for remote clients (e.g. routers or IoT devices).
 
