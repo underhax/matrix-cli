@@ -47,6 +47,12 @@ func (c *Client) Listen(_ context.Context, roomsStr string) error {
 		return fmt.Errorf("failed to write to stderr: %w", err)
 	}
 
+	if _, err := fmt.Fprintln(stdout, `{"status": "listening"}`); err != nil {
+		if _, writeErr := fmt.Fprintf(stderr, "stdout write error: %v\n", err); writeErr != nil {
+			return fmt.Errorf("sync loop terminated: %w", err)
+		}
+	}
+
 	if err := c.Matrix.Sync(); err != nil {
 		return fmt.Errorf("sync loop terminated: %w", err)
 	}

@@ -229,10 +229,10 @@ func TestRun(t *testing.T) {
 			wantErr:   true,
 		},
 		{
-			name:      "update command dev error",
-			errString: "update not available for development builds",
+			name:      "update command dev",
+			errString: "",
 			args:      []string{"update"},
-			wantErr:   true,
+			wantErr:   false,
 		},
 		{
 			name:    "version command",
@@ -276,8 +276,8 @@ func TestHandleUpdate_Dev(t *testing.T) {
 	AppVersion = "dev"
 
 	err := handleUpdate(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "update not available for development builds") {
-		t.Errorf("expected dev build error, got %v", err)
+	if err != nil {
+		t.Errorf("expected no error for dev build, got %v", err)
 	}
 }
 
@@ -301,5 +301,20 @@ func TestHandleUpdate_Success(t *testing.T) {
 	err := handleUpdate(context.Background())
 	if err != nil {
 		t.Fatalf("expected nil, got %v", err)
+	}
+}
+
+func TestHandleUpdate_Error(t *testing.T) {
+	oldAppVersion := AppVersion
+	defer func() { AppVersion = oldAppVersion }()
+	AppVersion = "v1.1.0"
+
+	oldEndpoint := config.EndpointUpdate
+	defer func() { config.EndpointUpdate = oldEndpoint }()
+	config.EndpointUpdate = "http://localhost:0"
+
+	err := handleUpdate(context.Background())
+	if err == nil {
+		t.Fatal("expected error, got nil")
 	}
 }

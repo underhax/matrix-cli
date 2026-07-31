@@ -77,8 +77,8 @@ func TestUpdate(t *testing.T) {
 			name:        "dev_version",
 			version:     "dev",
 			client:      nil,
-			errContains: "update not available for development builds",
-			wantErr:     true,
+			errContains: "",
+			wantErr:     false,
 		},
 		{
 			name:    "already_up_to_date",

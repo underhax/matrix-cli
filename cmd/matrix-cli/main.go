@@ -171,7 +171,7 @@ func checkCommands(args []string) (bool, error) {
 	case cmdUpdate:
 		return true, handleUpdate(context.Background())
 	case cmdVersion:
-		fmt.Println(AppVersion)
+		fmt.Fprintln(os.Stderr, AppVersion)
 		return true, nil
 	}
 	return false, nil
@@ -447,7 +447,7 @@ func executeRoomsInfo(ctx context.Context, cli *client.Client, mode, rooms strin
 func handleUpdate(ctx context.Context) error {
 	httpClient := &http.Client{}
 	if err := updater.Update(ctx, httpClient, AppVersion); err != nil {
-		return fmt.Errorf("update failed: %w", err)
+		return fmt.Errorf("%w", err)
 	}
 	return nil
 }

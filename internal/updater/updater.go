@@ -112,7 +112,8 @@ func fetchLatestRelease(ctx context.Context, client *http.Client) (*releaseInfo,
 // Update downloads and applies the latest update.
 func Update(ctx context.Context, client *http.Client, currentVersion string) error {
 	if currentVersion == "dev" {
-		return errors.New("update not available for development builds")
+		fmt.Fprintln(os.Stderr, "Error: update not available for development builds")
+		return nil
 	}
 
 	platformKey := fmt.Sprintf("%s/%s", osGOOS, runtime.GOARCH)
@@ -128,11 +129,11 @@ func Update(ctx context.Context, client *http.Client, currentVersion string) err
 		return err
 	}
 
-	fmt.Printf("Latest version: %s\n", release.TagName)
-	fmt.Printf("Current version: %s\n", currentVersion)
+	fmt.Fprintf(os.Stderr, "Latest version: %s\n", release.TagName)
+	fmt.Fprintf(os.Stderr, "Current version: %s\n", currentVersion)
 
 	if release.TagName == currentVersion {
-		fmt.Printf("Versions match. No update required.\n")
+		fmt.Fprintf(os.Stderr, "Versions match. No update required.\n")
 		return nil
 	}
 
@@ -183,7 +184,7 @@ func Update(ctx context.Context, client *http.Client, currentVersion string) err
 	stopSpinner()
 
 	if err == nil {
-		fmt.Printf("Successfully updated to %s!\n", release.TagName)
+		fmt.Fprintf(os.Stderr, "Successfully updated to %s!\n", release.TagName)
 	}
 	return err
 }

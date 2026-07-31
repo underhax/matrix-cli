@@ -120,6 +120,21 @@ func TestListen(t *testing.T) {
 			stopSync:  true,
 			expectErr: false,
 		},
+		{
+			name:              "stdout_status_err_stderr_ok",
+			roomsStr:          "!listen_r7:example.com",
+			stdoutFailMsg:     "listening",
+			expectErr:         true,
+			expectErrContains: "sync loop terminated",
+		},
+		{
+			name:              "stdout_status_err_stderr_err",
+			roomsStr:          "!listen_r8:example.com",
+			stdoutFailMsg:     "listening",
+			stderrFailMsg:     "stdout write error",
+			expectErr:         true,
+			expectErrContains: "sync loop terminated",
+		},
 	}
 
 	for _, tt := range tests {
