@@ -24,10 +24,12 @@ jobs:
 
       - name: Install Cross-Compilers
         run: |
+          set -euo pipefail
           sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build and Archive
         run: |
+          set -euo pipefail
           mkdir -p release_assets
 
           TARGETS="linux/amd64 linux/arm64"
@@ -81,12 +83,39 @@ jobs:
 
       - name: Install Cross-Compilers
         run: |
-          curl -sSL -f --retry 3 --retry-connrefused --retry-delay 2 https://musl.cc/mipsel-linux-muslsf-cross.tgz -o /tmp/musl.tgz
-          tar -xzf /tmp/musl.tgz -C /tmp
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y jq curl
+          cd /tmp
+          echo "Fetching latest release info from musl-cc/musl.cc..."
+          LATEST_JSON=$(curl -sSL -f --retry 3 "https://api.github.com/repos/musl-cc/musl.cc/releases/latest")
+          DOWNLOAD_URL=$(echo "$LATEST_JSON" | jq -r '.assets[] | select(.name == "mipsel-linux-muslsf-cross.tgz") | .browser_download_url')
+          EXPECTED_HASH=$(echo "$LATEST_JSON" | jq -r '.assets[] | select(.name == "mipsel-linux-muslsf-cross.tgz") | .digest')
+          EXPECTED_HASH="${EXPECTED_HASH#sha256:}"
+
+          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+            echo "Error: Could not find download URL for mipsel-linux-muslsf-cross.tgz"
+            exit 1
+          fi
+
+          if [ -z "$EXPECTED_HASH" ] || [ "$EXPECTED_HASH" = "null" ]; then
+            echo "Error: Could not find SHA256 digest in GitHub API"
+            exit 1
+          fi
+
+          echo "Downloading $DOWNLOAD_URL"
+          curl -sSL -f --retry 3 --retry-connrefused --retry-delay 2 "$DOWNLOAD_URL" -o mipsel-linux-muslsf-cross.tgz
+
+          echo "Verifying SHA256 checksum..."
+          echo "${EXPECTED_HASH}  mipsel-linux-muslsf-cross.tgz" > checksum.txt
+          sha256sum -c checksum.txt || exit 1
+
+          echo "Extracting..."
+          tar -xzf mipsel-linux-muslsf-cross.tgz
           echo "/tmp/mipsel-linux-muslsf-cross/bin" >> $GITHUB_PATH
 
       - name: Build and Archive
         run: |
+          set -euo pipefail
           mkdir -p release_assets
 
           TARGETS="linux/mipsle"
