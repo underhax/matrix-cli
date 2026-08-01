@@ -13,7 +13,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/underhax/matrix-cli/internal/client"
 	"github.com/underhax/matrix-cli/internal/config"
@@ -35,16 +37,6 @@ var (
 )
 
 const (
-	modeAuth      = "auth"
-	modeBootstrap = "bootstrap"
-	modeListen    = "listen"
-	modeSend      = "send"
-	modeVerify    = "verify"
-	modeRooms     = "rooms"
-	modeRoomInfo  = "room-info"
-	modeDevices   = "devices"
-	modeLogout    = "logout"
-
 	cmdUpdate  = "update"
 	cmdVersion = "version"
 
@@ -63,6 +55,7 @@ const (
 	flagVerbose         = "--verbose"
 	flagDebug           = "--debug"
 	flagDataDir         = "--data-dir"
+	flagJSON            = "--json"
 )
 
 func getDefaultDataDir() string {
@@ -97,13 +90,37 @@ type cliOptions struct {
 	verbose         *bool
 	debugLevel      *int
 	dataDir         *string
+	jsonMode        *bool
+}
+
+func isJSONMode() bool {
+	return slices.Contains(os.Args[1:], flagJSON)
+}
+
+var jsonMarshal = json.Marshal
+
+func printFatalError(err error) {
+	if isJSONMode() {
+		errMap := map[string]string{
+			"level": "fatal",
+			"error": err.Error(),
+			"time":  time.Now().Format(time.RFC3339),
+		}
+		if payload, mErr := jsonMarshal(errMap); mErr == nil {
+			fmt.Fprintln(os.Stderr, string(payload))
+		} else {
+			fmt.Fprintf(os.Stderr, `{"level":"fatal","error":"%s"}`+"\n", err.Error())
+		}
+	} else {
+		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	}
 }
 
 func main() {
 	setUmask()
 	updater.CleanupWindowsOldFiles()
 	if err := run(os.Args[1:]); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		printFatalError(err)
 		osExit(1)
 	}
 }
@@ -123,6 +140,7 @@ func setupFlags() (*flag.FlagSet, cliOptions) {
 	html := fs.Bool(flagHTML[2:], false, "Send message as HTML formatted text (for send)")
 	markdown := fs.Bool(flagMarkdown[2:], false, "Parse message as Markdown and send formatted text (for send)")
 	verbose := fs.Bool(flagVerbose[2:], false, "Enable verbose output (e.g. detailed room info)")
+	jsonMode := fs.Bool(flagJSON[2:], false, "Enable strict machine mode (JSON output only, no interactive prompts)")
 	debugLevel := 0
 	fs.Var(&logger.LevelFlag{Level: &debugLevel}, flagDebug[2:], "Enable debug logging (use --debug or --debug=2)")
 
@@ -158,6 +176,7 @@ func setupFlags() (*flag.FlagSet, cliOptions) {
 		verbose:         verbose,
 		debugLevel:      &debugLevel,
 		dataDir:         dataDir,
+		jsonMode:        jsonMode,
 	}
 
 	return fs, opts
@@ -177,6 +196,27 @@ func checkCommands(args []string) (bool, error) {
 	return false, nil
 }
 
+func checkModeOpts(mode string, jsonMode bool) (bool, error) {
+	if mode == "" || mode == "-h" || mode == "help" || mode == "--help" {
+		return true, nil
+	}
+
+	validModes := map[string]bool{
+		consts.ModeAuth: true, consts.ModeBootstrap: true, consts.ModeListen: true, consts.ModeSend: true,
+		consts.ModeVerify: true, consts.ModeRooms: true, consts.ModeRoomInfo: true,
+		consts.ModeDevices: true, consts.ModeLogout: true,
+	}
+	if !validModes[mode] {
+		return false, fmt.Errorf("unknown mode: %s", mode)
+	}
+
+	if jsonMode && (mode == consts.ModeVerify || mode == consts.ModeBootstrap || mode == consts.ModeAuth || mode == consts.ModeLogout) {
+		return false, fmt.Errorf("--json flag is not supported in %s mode", mode)
+	}
+
+	return false, nil
+}
+
 func run(args []string) error {
 	if handled, err := checkCommands(args); handled {
 		return err
@@ -191,21 +231,21 @@ func run(args []string) error {
 		return fmt.Errorf("failed to parse flags: %w", err)
 	}
 
-	log := logger.Setup(*opts.debugLevel, os.Stderr)
+	log := logger.Setup(*opts.debugLevel, *opts.jsonMode, os.Stderr)
 
-	if *opts.mode == "" || *opts.mode == "-h" || *opts.mode == "help" || *opts.mode == "--help" {
+	client.InteractiveDisabled = *opts.jsonMode
+	client.JSONMode = *opts.jsonMode
+
+	help, err := checkModeOpts(*opts.mode, *opts.jsonMode)
+	if err != nil {
+		if !*opts.jsonMode {
+			fs.Usage()
+		}
+		return err
+	}
+	if help {
 		fs.Usage()
 		return nil
-	}
-
-	validModes := map[string]bool{
-		modeAuth: true, modeBootstrap: true, modeListen: true, modeSend: true,
-		modeVerify: true, modeRooms: true, modeRoomInfo: true,
-		modeDevices: true, modeLogout: true,
-	}
-	if !validModes[*opts.mode] {
-		fs.Usage()
-		return fmt.Errorf("unknown mode: %s", *opts.mode)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -230,7 +270,7 @@ func run(args []string) error {
 		return nil
 	}
 
-	if *opts.mode == modeAuth {
+	if *opts.mode == consts.ModeAuth {
 		return handleAuth(ctx, *opts.server, *opts.user, *opts.pass, *opts.device, *opts.ssoCallbackPort, sessionFile)
 	}
 
@@ -249,12 +289,12 @@ func validateInput(mode, server, user, rooms, sessionFile, dbFile, pickleFile st
 
 func validateAuthInput(mode, server, user string) []string {
 	var msgs []string
-	if mode == modeAuth {
+	if mode == consts.ModeAuth {
 		if err := validateServerURL(server); err != nil {
 			msgs = append(msgs, fmt.Sprintf("%v for server %q", err, server))
 		}
 	}
-	if user != "" && (mode == modeAuth || mode == modeVerify) {
+	if user != "" && (mode == consts.ModeAuth || mode == consts.ModeVerify) {
 		if err := validator.ValidateUserID(user); err != nil {
 			msgs = append(msgs, fmt.Sprintf("%v for user %q", err, user))
 		}
@@ -277,7 +317,7 @@ func validateServerURL(server string) error {
 
 func validateRoomsInput(mode, rooms string) []string {
 	var msgs []string
-	if rooms != "" && (mode == modeSend || mode == modeListen || mode == modeRoomInfo) {
+	if rooms != "" && (mode == consts.ModeSend || mode == consts.ModeListen || mode == consts.ModeRoomInfo) {
 		for r := range strings.FieldsSeq(rooms) {
 			if err := validator.ValidateRoomID(r); err != nil {
 				msgs = append(msgs, fmt.Sprintf("%v for room %q", err, r))
@@ -313,19 +353,14 @@ func handleAuth(ctx context.Context, server, user, pass, device, ssoCallbackPort
 	if errAbs != nil || absPath == "" {
 		absPath = sessionFile
 	}
-	_, _ = fmt.Fprintf(os.Stderr, "\nAuthentication successful. Session saved to %s\n", absPath)
 
-	out := map[string]string{
-		consts.KeyStatus:     "success",
-		consts.KeyUserID:     session.UserID,
-		consts.KeyDeviceID:   session.DeviceID,
-		consts.KeyDeviceName: session.DeviceName,
+	_, _ = fmt.Fprintf(os.Stderr, "\nAuthentication successful.\n")
+	_, _ = fmt.Fprintf(os.Stderr, "  User ID:     %s\n", session.UserID)
+	_, _ = fmt.Fprintf(os.Stderr, "  Device ID:   %s\n", session.DeviceID)
+	if session.DeviceName != "" {
+		_, _ = fmt.Fprintf(os.Stderr, "  Device Name: %s\n", session.DeviceName)
 	}
-	if payload, marshalErr := json.Marshal(out); marshalErr == nil {
-		if _, writeErr := fmt.Fprintf(stdout, "\n%s\n\n", string(payload)); writeErr != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to write json: %v\n", writeErr)
-		}
-	}
+	_, _ = fmt.Fprintf(os.Stderr, "\nSession saved to %s\n", absPath)
 
 	return nil
 }
@@ -349,12 +384,12 @@ func handleOperations(ctx context.Context, log *logger.Logger, mode, rooms, msg,
 		}
 	}()
 
-	if mode == modeLogout {
+	if mode == consts.ModeLogout {
 		handleLogout(ctx, session, db, &dbClosed, sessionFile, dbFile, pickleFile)
 		return nil
 	}
 
-	cli, err := client.New(ctx, session, db, pickleFile, log)
+	cli, err := client.New(ctx, session, db, pickleFile, log, mode)
 	if err != nil {
 		return fmt.Errorf("client initialization failed: %w", err)
 	}
@@ -380,40 +415,33 @@ func handleLogout(ctx context.Context, session *config.Session, db *sql.DB, dbCl
 		}
 	}
 
-	out := map[string]string{
-		"status": "success",
-	}
-	if payload, marshalErr := json.Marshal(out); marshalErr == nil {
-		if _, writeErr := fmt.Fprintf(stdout, "\n%s\n\n", string(payload)); writeErr != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to write json: %v\n", writeErr)
-		}
-	}
+	_, _ = fmt.Fprintf(os.Stderr, "\nLogout successful. Local data wiped.\n")
 }
 
 func executeMode(ctx context.Context, cli *client.Client, mode, rooms, msg, targetUser string, newKeys bool, recoveryKey string, verbose, html, markdown bool) error {
 	switch mode {
-	case modeBootstrap:
+	case consts.ModeBootstrap:
 		if err := cli.Bootstrap(ctx, newKeys, recoveryKey); err != nil {
 			return fmt.Errorf("bootstrap error: %w", err)
 		}
-	case modeListen:
+	case consts.ModeListen:
 		if err := cli.Listen(ctx, rooms); err != nil {
 			return fmt.Errorf("listener error: %w", err)
 		}
-	case modeSend:
+	case consts.ModeSend:
 		if rooms == "" || msg == "" {
 			return errors.New("--rooms and --message are required for send mode")
 		}
 		if err := cli.Send(ctx, rooms, msg, html, markdown); err != nil {
 			return fmt.Errorf("send error: %w", err)
 		}
-	case modeVerify:
+	case consts.ModeVerify:
 		if err := cli.Verify(ctx, targetUser); err != nil {
 			return fmt.Errorf("verify mode error: %w", err)
 		}
-	case modeRooms, modeRoomInfo:
+	case consts.ModeRooms, consts.ModeRoomInfo:
 		return executeRoomsInfo(ctx, cli, mode, rooms, verbose)
-	case modeDevices:
+	case consts.ModeDevices:
 		if err := cli.Devices(ctx); err != nil {
 			return fmt.Errorf("devices fetch error: %w", err)
 		}
@@ -425,9 +453,11 @@ func executeMode(ctx context.Context, cli *client.Client, mode, rooms, msg, targ
 }
 
 func executeRoomsInfo(ctx context.Context, cli *client.Client, mode, rooms string, verbose bool) error {
-	if mode == modeRooms {
-		if _, err := fmt.Fprintf(stdout, "\nJoined Rooms:\n"); err != nil {
-			return fmt.Errorf("failed to write to stdout: %w", err)
+	if mode == consts.ModeRooms {
+		if !client.JSONMode {
+			if _, err := fmt.Fprintf(stdout, "\nJoined Rooms:\n"); err != nil {
+				return fmt.Errorf("failed to write to stdout: %w", err)
+			}
 		}
 		if err := cli.Rooms(ctx, verbose); err != nil {
 			return fmt.Errorf("rooms list error: %w", err)

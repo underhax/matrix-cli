@@ -3,6 +3,8 @@ package main
 import (
 	"reflect"
 	"testing"
+
+	"github.com/underhax/matrix-cli/internal/consts"
 )
 
 func TestValidateInput(t *testing.T) {
@@ -19,7 +21,7 @@ func TestValidateInput(t *testing.T) {
 	}{
 		{
 			name:       "valid_all_inputs",
-			mode:       modeAuth,
+			mode:       consts.ModeAuth,
 			server:     "https://example.com",
 			user:       "@test:example.com",
 			rooms:      "!room:example.com",
@@ -30,7 +32,7 @@ func TestValidateInput(t *testing.T) {
 		},
 		{
 			name:       "valid_domain_only",
-			mode:       modeAuth,
+			mode:       consts.ModeAuth,
 			server:     "example.org",
 			user:       "",
 			rooms:      "",
@@ -41,7 +43,7 @@ func TestValidateInput(t *testing.T) {
 		},
 		{
 			name:       "invalid_server_url",
-			mode:       modeAuth,
+			mode:       consts.ModeAuth,
 			server:     "http://[::1]:err",
 			user:       "",
 			rooms:      "",
@@ -52,7 +54,7 @@ func TestValidateInput(t *testing.T) {
 		},
 		{
 			name:       "invalid_server_domain",
-			mode:       modeAuth,
+			mode:       consts.ModeAuth,
 			server:     "invalid_domain",
 			user:       "",
 			rooms:      "",
@@ -63,7 +65,7 @@ func TestValidateInput(t *testing.T) {
 		},
 		{
 			name:       "invalid_user_id",
-			mode:       modeVerify,
+			mode:       consts.ModeVerify,
 			server:     "",
 			user:       "invalid_user",
 			rooms:      "",
@@ -74,7 +76,7 @@ func TestValidateInput(t *testing.T) {
 		},
 		{
 			name:    "invalid_room_ids",
-			mode:    modeSend,
+			mode:    consts.ModeSend,
 			server:  "",
 			user:    "",
 			rooms:   "invalid_room !valid:example.net bad_room",

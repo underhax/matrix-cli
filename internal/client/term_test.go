@@ -9,14 +9,16 @@ import (
 
 func TestReadPassword(t *testing.T) {
 	type termTestCase struct {
-		name           string
-		prompt         string
-		expected       string
-		termPassErr    error
-		termPassReturn []byte
-		stdoutErrNum   int
-		isTerm         bool
-		expectErr      bool
+		termPassErr         error
+		mockErr             error
+		name                string
+		prompt              string
+		expected            string
+		termPassReturn      []byte
+		stderrErrNum        int
+		isTerm              bool
+		interactiveDisabled bool
+		expectErr           bool
 	}
 
 	tests := []termTestCase{
@@ -42,40 +44,52 @@ func TestReadPassword(t *testing.T) {
 			expectErr:   true,
 		},
 		{
-			name:         "stdout_print_error",
+			name:         "stderr_print_error",
 			prompt:       "Enter pass 4: ",
 			isTerm:       true,
-			stdoutErrNum: 1,
+			stderrErrNum: 1,
+			mockErr:      errors.New("failed to print prompt to stderr"),
 			expectErr:    true,
 		},
 		{
-			name:           "stdout_println_error",
+			name:           "stderr_println_error",
 			prompt:         "Enter pass 5: ",
 			isTerm:         true,
 			termPassReturn: []byte("pass"),
-			stdoutErrNum:   2,
+			stderrErrNum:   2,
+			mockErr:        errors.New("failed to print newline to stderr"),
 			expectErr:      true,
+		},
+		{
+			name:                "interactive_disabled",
+			prompt:              "Enter pass 6: ",
+			interactiveDisabled: true,
+			expectErr:           true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			origStdout := stdout
+			origStderr := stderr
 			origTermIsTerminal := termIsTerminal
 			origTermReadPassword := termReadPassword
 			origGetStdinFd := getStdinFd
+			origInteractiveDisabled := InteractiveDisabled
 			defer func() {
-				stdout = origStdout
+				stderr = origStderr
 				termIsTerminal = origTermIsTerminal
 				termReadPassword = origTermReadPassword
 				getStdinFd = origGetStdinFd
+				InteractiveDisabled = origInteractiveDisabled
 			}()
 
-			var outBuf bytes.Buffer
-			if tt.stdoutErrNum > 0 {
-				stdout = &errorWriter{failOnWriteNum: tt.stdoutErrNum}
+			InteractiveDisabled = tt.interactiveDisabled
+
+			var errBuf bytes.Buffer
+			if tt.stderrErrNum > 0 {
+				stderr = &errorWriter{failOnWriteNum: tt.stderrErrNum, mockErr: tt.mockErr}
 			} else {
-				stdout = &outBuf
+				stderr = &errBuf
 			}
 
 			getStdinFd = func() int { return 0 }
@@ -90,8 +104,8 @@ func TestReadPassword(t *testing.T) {
 			if err == nil && res != tt.expected {
 				t.Errorf("expected res=%q, got %q", tt.expected, res)
 			}
-			if err == nil && !strings.Contains(outBuf.String(), tt.prompt) {
-				t.Errorf("expected prompt %q in stdout, got %q", tt.prompt, outBuf.String())
+			if err == nil && !strings.Contains(errBuf.String(), tt.prompt) {
+				t.Errorf("expected prompt %q in stderr, got %q", tt.prompt, errBuf.String())
 			}
 		})
 	}

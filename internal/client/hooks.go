@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/underhax/matrix-cli/internal/consts"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto"
 	"maunium.net/go/mautrix/event"
@@ -105,7 +106,7 @@ func defaultDebugHandleSecretRequest(ctx context.Context, c *Client, mach *crypt
 	})
 	if err != nil {
 		c.Log.Debug().Err(err).Str("own_device_id", ownDeviceID).Str("target_device_id", targetDeviceID).Msg("Failed to send encrypted secret")
-	} else {
+	} else if c.Mode == consts.ModeVerify {
 		_, _ = fmt.Fprintf(os.Stderr, "Successfully sent secret %s to %s.\n", content.Name, targetDeviceID)
 
 		c.secretsMu.Lock()

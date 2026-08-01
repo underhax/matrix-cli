@@ -25,6 +25,7 @@ type listenTestCase struct {
 	stdoutFailMsg     string
 	eventID           string
 	stopSync          bool
+	jsonMode          bool
 	expectErr         bool
 }
 
@@ -72,9 +73,9 @@ func TestListen(t *testing.T) {
 	tests := []listenTestCase{
 		{
 			name:              "stderr_write_err_start",
-			stderrFailMsg:     "starting infinite sync loop",
+			stderrFailMsg:     "Listening for incoming",
 			expectErr:         true,
-			expectErrContains: "failed to write to stderr",
+			expectErrContains: "sync loop terminated",
 		},
 		{
 			name:              "filter_ignores_room",
@@ -108,32 +109,42 @@ func TestListen(t *testing.T) {
 		{
 			name:              "stdout_err_stderr_err",
 			roomsStr:          "!listen_r5:example.com",
-			stdoutFailMsg:     "$listen_evt_2",
+			stdoutFailMsg:     "!listen_r5",
 			eventID:           "$listen_evt_2",
-			stderrFailMsg:     "stdout write error",
+			stderrFailMsg:     "stdout wr",
 			expectErr:         true,
 			expectErrContains: "c loop term",
+		},
+		{
+			name:              "json_mode_marshal_err",
+			roomsStr:          "!listen_r2_json:example.com",
+			jsonMode:          true,
+			jsonMarshalErr:    errors.New("mock listen marshal err 1"),
+			expectErr:         true,
+			expectErrContains: "sync loop term",
+		},
+		{
+			name:              "json_mode_stdout_err_ok",
+			roomsStr:          "!listen_r4_json:example.com",
+			jsonMode:          true,
+			stdoutFailMsg:     "$listen_evt_json",
+			eventID:           "$listen_evt_json",
+			expectErr:         true,
+			expectErrContains: "loop term",
+		},
+		{
+			name:              "json_mode_status_err_ok",
+			roomsStr:          "!listen_r7_json:example.com",
+			jsonMode:          true,
+			stdoutFailMsg:     `{"status": "listening"}`,
+			expectErr:         true,
+			expectErrContains: "sync loop terminate",
 		},
 		{
 			name:      "listen_success",
 			roomsStr:  "!listen_r6:example.com",
 			stopSync:  true,
 			expectErr: false,
-		},
-		{
-			name:              "stdout_status_err_stderr_ok",
-			roomsStr:          "!listen_r7:example.com",
-			stdoutFailMsg:     "listening",
-			expectErr:         true,
-			expectErrContains: "sync loop terminated",
-		},
-		{
-			name:              "stdout_status_err_stderr_err",
-			roomsStr:          "!listen_r8:example.com",
-			stdoutFailMsg:     "listening",
-			stderrFailMsg:     "stdout write error",
-			expectErr:         true,
-			expectErrContains: "sync loop terminated",
 		},
 	}
 
@@ -164,11 +175,14 @@ func runListenTest(t *testing.T, tt *listenTestCase) {
 	origJSON := jsonMarshal
 	origStdout := stdout
 	origStderr := stderr
+	origJSONMode := JSONMode
 	defer func() {
 		jsonMarshal = origJSON
 		stdout = origStdout
 		stderr = origStderr
+		JSONMode = origJSONMode
 	}()
+	JSONMode = tt.jsonMode
 	setupListenMockIO(tt)
 
 	listenErr := make(chan error, 1)
@@ -208,6 +222,9 @@ func dispatchListenEvent(matrixClient *mautrix.Client, tt *listenTestCase) {
 			Type:   event.EventMessage,
 			RoomID: id.RoomID(roomID),
 			ID:     id.EventID(evtID),
+			Content: event.Content{
+				Parsed: &event.MessageEventContent{Body: "test message body"},
+			},
 		})
 	}
 	if tt.stopSync {
@@ -240,5 +257,31 @@ func TestListen_NotExtensibleSyncer(t *testing.T) {
 	err := client.Listen(context.Background(), "")
 	if err == nil || !strings.Contains(err.Error(), "does not implement mautrix.ExtensibleSyncer") {
 		t.Errorf("expected ExtensibleSyncer error, got: %v", err)
+	}
+}
+
+func TestCleanMessageBody(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"hello world", "hello world"},
+		{"hello<br>world", "hello\nworld"},
+		{"test<br>\ncase", "test\ncase"},
+		{"another\n<br>example", "another\nexample"},
+		{"more\n<br>\nlines", "more\nlines"},
+		{"last<br />\nline", "last\nline"},
+		{"🤖 <b>HELP</b><br>\n<br>\n<b>INFO:</b><br>\n", "🤖 HELP\n\nINFO:\n"},
+		{"🤖 <b>Uptime:</b><br>time: 13:31:36", "🤖 Uptime:\ntime: 13:31:36"},
+		{"hello &amp; world &lt;test&gt;", "hello & world <test>"},
+		{"<script>alert(1)</script>", "alert(1)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := cleanMessageBody(tt.input)
+			if got != tt.expected {
+				t.Errorf("cleanMessageBody(%q) = %q; want %q", tt.input, got, tt.expected)
+			}
+		})
 	}
 }

@@ -66,16 +66,20 @@ func (testWriter) Write(p []byte) (n int, err error) {
 
 func TestSetup(t *testing.T) {
 	tests := []struct {
-		name  string
-		level int
+		name     string
+		level    int
+		jsonMode bool
 	}{
-		{"level_0", 0},
-		{"level_1", 1},
-		{"level_2", 2},
+		{"level_0_human", 0, false},
+		{"level_1_human", 1, false},
+		{"level_2_human", 2, false},
+		{"level_0_json", 0, true},
+		{"level_1_json", 1, true},
+		{"level_2_json", 2, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(_ *testing.T) {
-			l := Setup(tt.level, testWriter{})
+			l := Setup(tt.level, tt.jsonMode, testWriter{})
 			l.Info().Msg("test message")
 		})
 	}

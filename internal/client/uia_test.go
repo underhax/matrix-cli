@@ -27,6 +27,7 @@ type uiaTestCase struct {
 }
 
 type errorWriter struct {
+	mockErr        error
 	failOnWriteNum int
 	writeCount     int
 }
@@ -34,6 +35,9 @@ type errorWriter struct {
 func (ew *errorWriter) Write(p []byte) (n int, err error) {
 	ew.writeCount++
 	if ew.writeCount == ew.failOnWriteNum {
+		if ew.mockErr != nil {
+			return 0, ew.mockErr
+		}
 		return 0, errors.New("write error")
 	}
 	return len(p), nil
@@ -83,7 +87,7 @@ func TestHandleUIA(t *testing.T) {
 			flows: []mautrix.UIAFlow{
 				{Stages: []mautrix.AuthType{mautrix.AuthTypeSSO}},
 			},
-			customStdout: &errorWriter{failOnWriteNum: 1},
+			customStdout: &errorWriter{failOnWriteNum: 1, mockErr: errors.New("failed to write fallback SSO text")},
 			expectNil:    true,
 		},
 		{
@@ -91,7 +95,7 @@ func TestHandleUIA(t *testing.T) {
 			flows: []mautrix.UIAFlow{
 				{Stages: []mautrix.AuthType{mautrix.AuthTypeSSO}},
 			},
-			customStdout: &errorWriter{failOnWriteNum: 2},
+			customStdout: &errorWriter{failOnWriteNum: 2, mockErr: errors.New("failed to write fallback prompt")},
 			expectNil:    true,
 		},
 		{
@@ -99,7 +103,7 @@ func TestHandleUIA(t *testing.T) {
 			flows: []mautrix.UIAFlow{
 				{Stages: []mautrix.AuthType{mautrix.AuthTypeSSO}},
 			},
-			customStdout: &errorWriter{failOnWriteNum: 3},
+			customStdout: &errorWriter{failOnWriteNum: 3, mockErr: errors.New("failed to write newline")},
 			expectNil:    true,
 		},
 		{
@@ -124,7 +128,7 @@ func TestHandleUIA(t *testing.T) {
 			flows: []mautrix.UIAFlow{
 				{Stages: []mautrix.AuthType{mautrix.AuthTypePassword}},
 			},
-			customStdout: &errorWriter{failOnWriteNum: 1},
+			customStdout: &errorWriter{failOnWriteNum: 1, mockErr: errors.New("failed to write password prompt")},
 			expectNil:    true,
 		},
 		{
@@ -144,7 +148,7 @@ func TestHandleUIA(t *testing.T) {
 			},
 			session:      "sess_789",
 			mockPassErr:  errors.New("mock read error"),
-			customStderr: &errorWriter{failOnWriteNum: 1},
+			customStderr: &errorWriter{failOnWriteNum: 1, mockErr: errors.New("failed to write password error to stderr")},
 			expectNil:    true,
 		},
 		{
@@ -161,7 +165,7 @@ func TestHandleUIA(t *testing.T) {
 			flows: []mautrix.UIAFlow{
 				{Stages: []mautrix.AuthType{"m.login.dummy"}},
 			},
-			customStderr: &errorWriter{failOnWriteNum: 1},
+			customStderr: &errorWriter{failOnWriteNum: 1, mockErr: errors.New("failed to write unsupported flow error")},
 			expectNil:    true,
 		},
 	}

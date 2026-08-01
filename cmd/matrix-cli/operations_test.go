@@ -13,6 +13,7 @@ import (
 
 	"github.com/underhax/matrix-cli/internal/client"
 	"github.com/underhax/matrix-cli/internal/config"
+	"github.com/underhax/matrix-cli/internal/consts"
 	"github.com/underhax/matrix-cli/internal/logger"
 
 	"maunium.net/go/mautrix"
@@ -21,7 +22,7 @@ import (
 func TestHandleOperations_InvalidSession(t *testing.T) {
 	ctx := context.Background()
 	nopLog := logger.Nop()
-	err := handleOperations(ctx, &nopLog, modeListen, "", "", "", false, "", false, false, false, "nonexistent.json", ":memory:", "pickle.key")
+	err := handleOperations(ctx, &nopLog, consts.ModeListen, "", "", "", false, "", false, false, false, "nonexistent.json", ":memory:", "pickle.key")
 	if err == nil || !strings.Contains(err.Error(), "failed to load session") {
 		t.Fatalf("expected failed to load session error, got %v", err)
 	}
@@ -38,7 +39,7 @@ func TestHandleOperations_InvalidDB(t *testing.T) {
 
 	ctx := context.Background()
 	nopLog := logger.Nop()
-	err = handleOperations(ctx, &nopLog, modeListen, "", "", "", false, "", false, false, false, sessFile, "/invalid/db/path", "pickle.key")
+	err = handleOperations(ctx, &nopLog, consts.ModeListen, "", "", "", false, "", false, false, false, sessFile, "/invalid/db/path", "pickle.key")
 	if err == nil || !strings.Contains(err.Error(), "database error") {
 		t.Fatalf("expected database error, got %v", err)
 	}
@@ -55,7 +56,7 @@ func TestHandleOperations_InvalidClient(t *testing.T) {
 
 	ctx := context.Background()
 	nopLog := logger.Nop()
-	err = handleOperations(ctx, &nopLog, modeListen, "", "", "", false, "", false, false, false, sessFile, ":memory:", filepath.Join(tmp, "p.key"))
+	err = handleOperations(ctx, &nopLog, consts.ModeListen, "", "", "", false, "", false, false, false, sessFile, ":memory:", filepath.Join(tmp, "p.key"))
 	if err == nil || !strings.Contains(err.Error(), "client initialization failed") {
 		t.Fatalf("expected client initialization error, got %v", err)
 	}
@@ -78,7 +79,7 @@ func TestHandleOperations_DBCloseError(t *testing.T) {
 
 	ctx := context.Background()
 	nopLog := logger.Nop()
-	err = handleOperations(ctx, &nopLog, modeListen, "", "", "", false, "", false, false, false, sessFile, ":memory:", filepath.Join(tmp, "p.key"))
+	err = handleOperations(ctx, &nopLog, consts.ModeListen, "", "", "", false, "", false, false, false, sessFile, ":memory:", filepath.Join(tmp, "p.key"))
 	if err == nil || !strings.Contains(err.Error(), "client initialization failed") {
 		t.Fatalf("expected client initialization error, got %v", err)
 	}
@@ -111,7 +112,7 @@ func TestHandleLogout(t *testing.T) {
 	stdout = devNull
 
 	nopLog := logger.Nop()
-	err = handleOperations(ctx, &nopLog, modeLogout, "", "", "", false, "", false, false, false, sessFile, dbFile, pickleFile)
+	err = handleOperations(ctx, &nopLog, consts.ModeLogout, "", "", "", false, "", false, false, false, sessFile, dbFile, pickleFile)
 	if err != nil {
 		t.Fatalf("expected logout to succeed, got %v", err)
 	}
@@ -165,7 +166,7 @@ func TestHandleLogout_Errors(t *testing.T) {
 	ctx := context.Background()
 	nopLog := logger.Nop()
 
-	err = handleOperations(ctx, &nopLog, modeLogout, "", "", "", false, "", false, false, false, sessFile, dbFile, pickleFile)
+	err = handleOperations(ctx, &nopLog, consts.ModeLogout, "", "", "", false, "", false, false, false, sessFile, dbFile, pickleFile)
 	if err != nil {
 		t.Fatalf("expected logout to succeed despite mock errors, got %v", err)
 	}
@@ -203,7 +204,7 @@ func TestHandleOperations_Success(t *testing.T) {
 	stdout = devNull
 
 	nopLog := logger.Nop()
-	err = handleOperations(ctx, &nopLog, modeSend, "", "", "", false, "", false, false, false, sessFile, dbFile, pickleFile)
+	err = handleOperations(ctx, &nopLog, consts.ModeSend, "", "", "", false, "", false, false, false, sessFile, dbFile, pickleFile)
 	if err == nil || err.Error() != "--rooms and --message are required for send mode" {
 		t.Errorf("expected send validation error from executeMode, got %v", err)
 	}
@@ -226,12 +227,12 @@ func TestExecuteMode_Validation(t *testing.T) {
 	}
 	stdout = devNull
 
-	err = executeMode(ctx, cli, modeSend, "", "", "", false, "", false, false, false)
+	err = executeMode(ctx, cli, consts.ModeSend, "", "", "", false, "", false, false, false)
 	if err == nil || err.Error() != "--rooms and --message are required for send mode" {
 		t.Errorf("expected send error, got %v", err)
 	}
 
-	err = executeRoomsInfo(ctx, cli, modeRoomInfo, "", false)
+	err = executeRoomsInfo(ctx, cli, consts.ModeRoomInfo, "", false)
 	if err == nil || err.Error() != "--rooms is required for room-info mode" {
 		t.Errorf("expected room-info error, got %v", err)
 	}
@@ -253,19 +254,19 @@ func TestExecuteMode_Execution(t *testing.T) {
 	}
 	stdout = devNull
 
-	err = executeMode(ctx, cli, modeVerify, "", "", "", false, "", false, false, false)
+	err = executeMode(ctx, cli, consts.ModeVerify, "", "", "", false, "", false, false, false)
 	if err == nil || !strings.Contains(err.Error(), "verify mode error") {
 		t.Errorf("expected verify error, got %v", err)
 	}
-	err = executeMode(ctx, cli, modeBootstrap, "", "", "", false, "", false, false, false)
+	err = executeMode(ctx, cli, consts.ModeBootstrap, "", "", "", false, "", false, false, false)
 	if err == nil || !strings.Contains(err.Error(), "bootstrap error") {
 		t.Errorf("expected bootstrap error, got %v", err)
 	}
-	err = executeMode(ctx, cli, modeListen, "", "", "", false, "", false, false, false)
+	err = executeMode(ctx, cli, consts.ModeListen, "", "", "", false, "", false, false, false)
 	if err == nil || !strings.Contains(err.Error(), "listener error") {
 		t.Errorf("expected listener error, got %v", err)
 	}
-	err = executeRoomsInfo(ctx, cli, modeRooms, "", false)
+	err = executeRoomsInfo(ctx, cli, consts.ModeRooms, "", false)
 	if err == nil || !strings.Contains(err.Error(), "rooms list error") {
 		t.Errorf("expected rooms list error, got %v", err)
 	}
@@ -287,12 +288,12 @@ func TestExecuteMode_Execution_Part2(t *testing.T) {
 	}
 	stdout = devNull
 
-	err = executeRoomsInfo(ctx, cli, modeRoomInfo, "!room:example.com", false)
+	err = executeRoomsInfo(ctx, cli, consts.ModeRoomInfo, "!room:example.com", false)
 	if err != nil {
 		t.Errorf("expected room info to return nil even on network errors, got %v", err)
 	}
 
-	err = executeMode(ctx, cli, modeDevices, "", "", "", false, "", false, false, false)
+	err = executeMode(ctx, cli, consts.ModeDevices, "", "", "", false, "", false, false, false)
 	if err == nil || !strings.Contains(err.Error(), "devices fetch error") {
 		t.Errorf("expected devices fetch error, got %v", err)
 	}
@@ -302,12 +303,12 @@ func TestExecuteMode_Execution_Part2(t *testing.T) {
 		t.Errorf("expected unknown mode error, got %v", err)
 	}
 
-	err = executeMode(ctx, cli, modeRoomInfo, " ", "", "", false, "", false, false, false)
+	err = executeMode(ctx, cli, consts.ModeRoomInfo, " ", "", "", false, "", false, false, false)
 	if err == nil || !strings.Contains(err.Error(), "room info error") {
 		t.Errorf("expected room info error from empty string, got %v", err)
 	}
 
-	err = executeMode(ctx, cli, modeSend, " ", "hello", "", false, "", false, false, false)
+	err = executeMode(ctx, cli, consts.ModeSend, " ", "hello", "", false, "", false, false, false)
 	if err == nil || !strings.Contains(err.Error(), "send error") {
 		t.Errorf("expected send error, got %v", err)
 	}
@@ -329,12 +330,12 @@ func TestExecuteMode_Execution_Part3(t *testing.T) {
 	}
 	stdout = devNull
 
-	err = executeMode(ctx, cli, modeRooms, "", "", "", false, "", false, false, false)
+	err = executeMode(ctx, cli, consts.ModeRooms, "", "", "", false, "", false, false, false)
 	if err == nil || !strings.Contains(err.Error(), "rooms list error") {
 		t.Errorf("expected rooms list error from executeMode, got %v", err)
 	}
 
-	err = executeMode(ctx, cli, modeRoomInfo, "!room:example.com", "", "", false, "", false, false, false)
+	err = executeMode(ctx, cli, consts.ModeRoomInfo, "!room:example.com", "", "", false, "", false, false, false)
 	if err != nil {
 		t.Errorf("expected room info via executeMode to return nil, got %v", err)
 	}
@@ -342,7 +343,7 @@ func TestExecuteMode_Execution_Part3(t *testing.T) {
 	if closeErr := devNull.Close(); closeErr != nil {
 		t.Fatalf("failed to close devnull: %v", closeErr)
 	}
-	err = executeMode(ctx, cli, modeRooms, "", "", "", false, "", false, false, false)
+	err = executeMode(ctx, cli, consts.ModeRooms, "", "", "", false, "", false, false, false)
 	if err == nil || !strings.Contains(err.Error(), "failed to write to stdout") {
 		t.Errorf("expected stdout write error, got %v", err)
 	}
@@ -373,12 +374,12 @@ func TestExecuteMode_Success(t *testing.T) {
 	}
 	stdout = devNull
 
-	err = executeMode(ctx, cli, modeDevices, "", "", "", false, "", false, false, false)
+	err = executeMode(ctx, cli, consts.ModeDevices, "", "", "", false, "", false, false, false)
 	if err != nil {
 		t.Errorf("expected devices fetch to succeed, got %v", err)
 	}
 
-	err = executeMode(ctx, cli, modeRooms, "", "", "", false, "", false, false, false)
+	err = executeMode(ctx, cli, consts.ModeRooms, "", "", "", false, "", false, false, false)
 	if err != nil {
 		t.Errorf("expected rooms list to succeed, got %v", err)
 	}

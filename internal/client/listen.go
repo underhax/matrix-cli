@@ -4,15 +4,29 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
+	"regexp"
 	"strings"
+	"time"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
 )
 
-// Listen starts an infinite sync loop, decrypting E2EE events and piping them
-// strictly to stdout as compact JSON to ensure parser compliance for downstream shell tools.
-// If roomsStr is provided, it filters incoming events strictly to the specified space-separated room IDs.
+var (
+	brRe       = regexp.MustCompile(`(?i)[ \t]*\r?\n?[ \t]*<br\s*/?>[ \t]*\r?\n?[ \t]*`)
+	htmlTagsRe = regexp.MustCompile(`<[^>]+>`)
+)
+
+func cleanMessageBody(body string) string {
+	s := brRe.ReplaceAllString(body, "\n")
+	s = htmlTagsRe.ReplaceAllString(s, "")
+	return html.UnescapeString(s)
+}
+
+// Listen starts an infinite sync loop, decrypting and outputting E2EE events.
+// It supports both human-readable and JSON output formats.
+// If roomsStr is provided, it filters incoming events to the specified room IDs.
 func (c *Client) Listen(_ context.Context, roomsStr string) error {
 	syncer, ok := c.Matrix.Syncer.(mautrix.ExtensibleSyncer)
 	if !ok {
@@ -29,26 +43,19 @@ func (c *Client) Listen(_ context.Context, roomsStr string) error {
 			return
 		}
 
-		payload, err := jsonMarshal(evt)
-		if err != nil {
-			if _, writeErr := fmt.Fprintf(stderr, "failed to marshal event %s: %v\n", evt.ID, err); writeErr != nil {
-				return
-			}
-			return
-		}
-		if _, err := fmt.Fprintln(stdout, string(payload)); err != nil {
-			if _, writeErr := fmt.Fprintf(stderr, "stdout write error: %v\n", err); writeErr != nil {
-				return
-			}
+		if JSONMode {
+			c.handleJSONEvent(evt)
+		} else {
+			c.handleHumanEvent(evt)
 		}
 	})
 
-	if _, err := fmt.Fprintln(stderr, "starting infinite sync loop..."); err != nil {
-		return fmt.Errorf("failed to write to stderr: %w", err)
-	}
-
-	if _, err := fmt.Fprintln(stdout, `{"status": "listening"}`); err != nil {
-		if _, writeErr := fmt.Fprintf(stderr, "stdout write error: %v\n", err); writeErr != nil {
+	if JSONMode {
+		if _, err := fmt.Fprintln(stdout, `{"status": "listening"}`); err != nil {
+			return fmt.Errorf("sync loop terminated: %w", err)
+		}
+	} else {
+		if _, err := fmt.Fprintln(stderr, "Listening for incoming messages..."); err != nil {
 			return fmt.Errorf("sync loop terminated: %w", err)
 		}
 	}
@@ -58,4 +65,26 @@ func (c *Client) Listen(_ context.Context, roomsStr string) error {
 	}
 
 	return nil
+}
+
+func (c *Client) handleJSONEvent(evt *event.Event) {
+	payload, err := jsonMarshal(evt)
+	if err != nil {
+		c.Log.Error().Err(err).Msgf("failed to marshal event %s", evt.ID)
+		return
+	}
+	if _, err := fmt.Fprintln(stdout, string(payload)); err != nil {
+		c.Log.Error().Err(err).Msg("stdout write error")
+	}
+}
+
+func (c *Client) handleHumanEvent(evt *event.Event) {
+	tm := time.UnixMilli(evt.Timestamp).Format("2006-01-02 15:04:05")
+	body := "<unparsed message>"
+	if content, ok := evt.Content.Parsed.(*event.MessageEventContent); ok {
+		body = cleanMessageBody(content.Body)
+	}
+	if _, err := fmt.Fprintf(stdout, "[%s] [%s] %s:\n%s\n", tm, evt.RoomID, evt.Sender, body); err != nil {
+		c.Log.Error().Err(err).Msg("stdout write error")
+	}
 }

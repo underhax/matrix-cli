@@ -16,6 +16,7 @@ import (
 
 type infoTestCase struct {
 	jsonMarshalErr    error
+	mockErr           error
 	name              string
 	endpointPath      string
 	httpBody          string
@@ -25,6 +26,7 @@ type infoTestCase struct {
 	stdoutErrNum      int
 	verbose           bool
 	expectErr         bool
+	jsonMode          bool
 }
 
 func setupInfoMockServer(t *testing.T, tt *infoTestCase) *httptest.Server {
@@ -81,13 +83,32 @@ func TestRooms(t *testing.T) {
 			verbose:    false,
 		},
 		{
+			name:       "success_not_verbose_json",
+			httpStatus: 200,
+			httpBody:   `{"joined_rooms":["!info_r1_json:example.com"]}`,
+			verbose:    false,
+			jsonMode:   true,
+		},
+		{
 			name:              "marshal_err_not_verbose",
 			httpStatus:        200,
 			httpBody:          `{"joined_rooms":["!info_r2:example.com"]}`,
 			verbose:           false,
+			jsonMode:          true,
 			jsonMarshalErr:    errors.New("mock info marshal error 1"),
 			expectErr:         true,
 			expectErrContains: "failed to marshal rooms",
+		},
+		{
+			name:              "stdout_err_not_verbose_json",
+			httpStatus:        200,
+			httpBody:          `{"joined_rooms":["!info_r3:example.com"]}`,
+			verbose:           false,
+			jsonMode:          true,
+			stdoutErrNum:      1,
+			mockErr:           errors.New("failed to write json room list"),
+			expectErr:         true,
+			expectErrContains: "stdout write error: failed to write json room list",
 		},
 		{
 			name:              "stdout_err_not_verbose",
@@ -95,8 +116,9 @@ func TestRooms(t *testing.T) {
 			httpBody:          `{"joined_rooms":["!info_r3:example.com"]}`,
 			verbose:           false,
 			stdoutErrNum:      1,
+			mockErr:           errors.New("failed to write plain room list"),
 			expectErr:         true,
-			expectErrContains: "stdout write err",
+			expectErrContains: "stdout write error: failed to write plain room list",
 		},
 		{
 			name:       "success_verbose",
@@ -105,13 +127,32 @@ func TestRooms(t *testing.T) {
 			verbose:    true,
 		},
 		{
+			name:       "success_verbose_json",
+			httpStatus: 200,
+			httpBody:   `{"joined_rooms":["!info_r4_json:example.com"]}`,
+			verbose:    true,
+			jsonMode:   true,
+		},
+		{
 			name:              "marshal_err_verbose",
 			httpStatus:        200,
 			httpBody:          `{"joined_rooms":["!info_r5:example.com"]}`,
 			verbose:           true,
+			jsonMode:          true,
 			jsonMarshalErr:    errors.New("mock info marshal error 2"),
 			expectErr:         true,
 			expectErrContains: "failed to marshal detailed rooms",
+		},
+		{
+			name:              "stdout_err_verbose_json",
+			httpStatus:        200,
+			httpBody:          `{"joined_rooms":["!info_r6:example.com"]}`,
+			verbose:           true,
+			jsonMode:          true,
+			stdoutErrNum:      1,
+			mockErr:           errors.New("failed to write verbose json room list"),
+			expectErr:         true,
+			expectErrContains: "stdout write error: failed to write verbose json room list",
 		},
 		{
 			name:              "stdout_err_verbose",
@@ -119,13 +160,17 @@ func TestRooms(t *testing.T) {
 			httpBody:          `{"joined_rooms":["!info_r6:example.com"]}`,
 			verbose:           true,
 			stdoutErrNum:      1,
+			mockErr:           errors.New("failed to write verbose plain room list"),
 			expectErr:         true,
-			expectErrContains: "stdout write",
+			expectErrContains: "stdout write error: failed to write verbose plain room list",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			origJSONMode := JSONMode
+			defer func() { JSONMode = origJSONMode }()
+			JSONMode = tt.jsonMode
 			server := setupInfoMockServer(t, &tt)
 			defer server.Close()
 
@@ -146,7 +191,7 @@ func TestRooms(t *testing.T) {
 			origStdout := stdout
 			defer func() { stdout = origStdout }()
 			if tt.stdoutErrNum > 0 {
-				stdout = &errorWriter{failOnWriteNum: tt.stdoutErrNum}
+				stdout = &errorWriter{failOnWriteNum: tt.stdoutErrNum, mockErr: tt.mockErr}
 			} else {
 				stdout = io.Discard
 			}
@@ -182,6 +227,12 @@ func TestRoomInfo(t *testing.T) {
 			httpStatus: 200,
 		},
 		{
+			name:       "roominfo_success_json",
+			roomsStr:   "!info_roominfo1_json:example.com",
+			httpStatus: 200,
+			jsonMode:   true,
+		},
+		{
 			name:         "power_levels_err",
 			roomsStr:     "!info_roominfo2:example.com",
 			httpStatus:   200,
@@ -197,22 +248,37 @@ func TestRoomInfo(t *testing.T) {
 			name:              "roominfo_marshal_err",
 			roomsStr:          "!info_roominfo4:example.com",
 			httpStatus:        200,
+			jsonMode:          true,
 			jsonMarshalErr:    errors.New("mock info marshal error 3"),
 			expectErr:         true,
 			expectErrContains: "failed to marshal room details",
+		},
+		{
+			name:              "roominfo_stdout_err_json",
+			roomsStr:          "!info_roominfo5:example.com",
+			httpStatus:        200,
+			jsonMode:          true,
+			stdoutErrNum:      1,
+			mockErr:           errors.New("failed to write room details json"),
+			expectErr:         true,
+			expectErrContains: "stdout write error: failed to write room details json",
 		},
 		{
 			name:              "roominfo_stdout_err",
 			roomsStr:          "!info_roominfo5:example.com",
 			httpStatus:        200,
 			stdoutErrNum:      1,
+			mockErr:           errors.New("failed to write room details text"),
 			expectErr:         true,
-			expectErrContains: "write error",
+			expectErrContains: "stdout write error: failed to write room details text",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			origJSONMode := JSONMode
+			defer func() { JSONMode = origJSONMode }()
+			JSONMode = tt.jsonMode
 			server := setupInfoMockServer(t, &tt)
 			defer server.Close()
 
@@ -238,7 +304,7 @@ func TestRoomInfo(t *testing.T) {
 			}()
 
 			if tt.stdoutErrNum > 0 {
-				stdout = &errorWriter{failOnWriteNum: tt.stdoutErrNum}
+				stdout = &errorWriter{failOnWriteNum: tt.stdoutErrNum, mockErr: tt.mockErr}
 			} else {
 				stdout = io.Discard
 			}
@@ -262,23 +328,41 @@ func TestDevices(t *testing.T) {
 		{
 			name:       "devices_success",
 			httpStatus: 200,
-			httpBody:   `{"devices":[{"device_id":"DEV1"}]}`,
+			httpBody:   `{"devices":[{"device_id":"DEV1","display_name":"Test Device","last_seen_ip":"192.168.1.1","last_seen_ts":1785600580260}]}`,
+		},
+		{
+			name:       "devices_success_json",
+			httpStatus: 200,
+			httpBody:   `{"devices":[{"device_id":"DEV1_JSON"}]}`,
+			jsonMode:   true,
 		},
 		{
 			name:              "devices_marshal_err",
 			httpStatus:        200,
 			httpBody:          `{"devices":[{"device_id":"DEV2"}]}`,
+			jsonMode:          true,
 			jsonMarshalErr:    errors.New("mock info marshal error 4"),
 			expectErr:         true,
 			expectErrContains: "failed to marshal devices",
+		},
+		{
+			name:              "devices_stdout_err_json",
+			httpStatus:        200,
+			httpBody:          `{"devices":[{"device_id":"DEV3"}]}`,
+			jsonMode:          true,
+			stdoutErrNum:      1,
+			mockErr:           errors.New("failed to write device list json"),
+			expectErr:         true,
+			expectErrContains: "stdout write error: failed to write device list json",
 		},
 		{
 			name:              "devices_stdout_err",
 			httpStatus:        200,
 			httpBody:          `{"devices":[{"device_id":"DEV3"}]}`,
 			stdoutErrNum:      1,
+			mockErr:           errors.New("failed to write device list text"),
 			expectErr:         true,
-			expectErrContains: "out write error",
+			expectErrContains: "stdout write error: failed to write device list text",
 		},
 		{
 			name:       "devices_verified",
@@ -324,6 +408,9 @@ func TestDevices(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			origJSONMode := JSONMode
+			defer func() { JSONMode = origJSONMode }()
+			JSONMode = tt.jsonMode
 			server := setupInfoMockServer(t, &tt)
 			defer server.Close()
 
@@ -391,7 +478,7 @@ func TestDevices(t *testing.T) {
 			origStdout := stdout
 			defer func() { stdout = origStdout }()
 			if tt.stdoutErrNum > 0 {
-				stdout = &errorWriter{failOnWriteNum: tt.stdoutErrNum}
+				stdout = &errorWriter{failOnWriteNum: tt.stdoutErrNum, mockErr: tt.mockErr}
 			} else {
 				stdout = io.Discard
 			}

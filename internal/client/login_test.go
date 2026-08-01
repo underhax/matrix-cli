@@ -122,6 +122,7 @@ func mockTermReadPasswordSuccess(_ int) ([]byte, error) {
 func TestLogin_Flows(t *testing.T) {
 	origMautrixNewClient := mautrixNewClient
 	origStdout := stdout
+	origStderr := stderr
 	origStdin := stdin
 	origTermReadPassword := termReadPassword
 	origTermIsTerminal := termIsTerminal
@@ -129,6 +130,7 @@ func TestLogin_Flows(t *testing.T) {
 	defer func() {
 		mautrixNewClient = origMautrixNewClient
 		stdout = origStdout
+		stderr = origStderr
 		stdin = origStdin
 		termReadPassword = origTermReadPassword
 		termIsTerminal = origTermIsTerminal
@@ -136,6 +138,7 @@ func TestLogin_Flows(t *testing.T) {
 	}()
 
 	stdout = io.Discard
+	stderr = io.Discard
 	termIsTerminal = mockTermIsTerminalSuccess
 
 	tests := []struct {
@@ -149,7 +152,7 @@ func TestLogin_Flows(t *testing.T) {
 		newClientErr    bool
 		mockReadPassErr bool
 		mockStdinErr    bool
-		mockStdoutErr   bool
+		mockStderrErr   bool
 		mockSSOErr      bool
 		mockSSOSuccess  bool
 		flowsErr        bool
@@ -244,11 +247,11 @@ func TestLogin_Flows(t *testing.T) {
 			errContains:     "read password",
 		},
 		{
-			name: "password_flow_stdout_err_user",
+			name: "password_flow_stderr_err_user",
 			flowsResp: &mautrix.RespLoginFlows{
 				Flows: []mautrix.LoginFlow{{Type: mautrix.AuthTypePassword}},
 			},
-			mockStdoutErr: true,
+			mockStderrErr: true,
 			expectedErr:   true,
 			errContains:   "prompt for username",
 		},
@@ -262,12 +265,12 @@ func TestLogin_Flows(t *testing.T) {
 			errContains:  "read username",
 		},
 		{
-			name: "password_flow_stdout_err_pass",
+			name: "password_flow_stderr_err_pass",
 			flowsResp: &mautrix.RespLoginFlows{
 				Flows: []mautrix.LoginFlow{{Type: mautrix.AuthTypePassword}},
 			},
 			user:          "myuser",
-			mockStdoutErr: true,
+			mockStderrErr: true,
 			expectedErr:   true,
 			errContains:   "failed to print prompt",
 		},
@@ -314,10 +317,10 @@ func TestLogin_Flows(t *testing.T) {
 				stdin = strings.NewReader("")
 			}
 
-			if tt.mockStdoutErr {
-				stdout = loginErrorWriter{}
+			if tt.mockStderrErr {
+				stderr = loginErrorWriter{}
 			} else {
-				stdout = io.Discard
+				stderr = io.Discard
 			}
 
 			srv := createMockLoginServer(tt.flowsErr, tt.loginErr, tt.flowsResp)
@@ -641,11 +644,11 @@ func (w *loginFailOnPatternWriter) Write(p []byte) (n int, err error) {
 }
 
 func TestPrintSSOInstructions(t *testing.T) {
-	origStdout := stdout
-	defer func() { stdout = origStdout }()
+	origStderr := stderr
+	defer func() { stderr = origStderr }()
 
 	var buf strings.Builder
-	stdout = &buf
+	stderr = &buf
 	err := printSSOInstructions("https://example.com/", "http://localhost:8080/callback")
 	if err != nil {
 		t.Fatalf("expected success, got %v", err)
@@ -655,19 +658,19 @@ func TestPrintSSOInstructions(t *testing.T) {
 		t.Errorf("missing expected url in output: %s", out)
 	}
 
-	stdout = &loginFailOnPatternWriter{failOn: "SSO/OAuth authentication"}
+	stderr = &loginFailOnPatternWriter{failOn: "SSO/OAuth authentication"}
 	err = printSSOInstructions("https://example.com", "http://localhost:8080/callback")
 	if err == nil || !strings.Contains(err.Error(), "failed to print sso instructions") {
 		t.Fatalf("expected sso instructions print error, got %v", err)
 	}
 
-	stdout = &loginFailOnPatternWriter{failOn: "open the following link"}
+	stderr = &loginFailOnPatternWriter{failOn: "open the following link"}
 	err = printSSOInstructions("https://example.com", "http://localhost:8080/callback")
 	if err == nil || !strings.Contains(err.Error(), "failed to print sso url") {
 		t.Fatalf("expected sso url print error, got %v", err)
 	}
 
-	stdout = &loginFailOnPatternWriter{failOn: "Waiting for browser callback"}
+	stderr = &loginFailOnPatternWriter{failOn: "Waiting for browser callback"}
 	err = printSSOInstructions("https://example.com", "http://localhost:8080/callback")
 	if err == nil || !strings.Contains(err.Error(), "failed to print waiting message") {
 		t.Fatalf("expected waiting message print error, got %v", err)
@@ -769,7 +772,7 @@ func TestDefaultPerformSSOLogin_Failures(t *testing.T) {
 
 	t.Run("print_instructions_fail", func(t *testing.T) {
 		listenContext = mockSSOListenContext(origListenContext, nil)
-		stdout = loginErrorWriter{}
+		stderr = loginErrorWriter{}
 		_, err := defaultPerformSSOLogin(context.Background(), cli, mockMatrixSrv.URL, "0", "TestDev")
 		if err == nil || !strings.Contains(err.Error(), "failed to print sso instructions") {
 			t.Fatalf("expected print err, got %v", err)
@@ -778,6 +781,7 @@ func TestDefaultPerformSSOLogin_Failures(t *testing.T) {
 
 	t.Run("context_cancel", func(t *testing.T) {
 		stdout = &strings.Builder{}
+		stderr = &strings.Builder{}
 		listenContext = mockSSOListenContext(origListenContext, nil)
 		ctx, cancel := context.WithCancel(context.Background())
 		go func() {

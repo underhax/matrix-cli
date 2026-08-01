@@ -52,7 +52,7 @@ func TestSendToRoom(t *testing.T) {
 		{
 			name:              "state_event_error",
 			roomID:            "!room1:example.com",
-			message:           "hello 1",
+			message:           "Please review the latest deployment logs.",
 			stateEventStatus:  500,
 			expectErr:         true,
 			expectErrContains: "failed to fetch room encryption state",
@@ -60,7 +60,7 @@ func TestSendToRoom(t *testing.T) {
 		{
 			name:              "state_store_encryption_err",
 			roomID:            "!room2:example.com",
-			message:           "hello 2",
+			message:           "Can we schedule a sync for tomorrow?",
 			stateEventStatus:  200,
 			setEncryptionErr:  errors.New("mock set encryption error"),
 			expectErr:         true,
@@ -69,7 +69,7 @@ func TestSendToRoom(t *testing.T) {
 		{
 			name:              "joined_members_err",
 			roomID:            "!room3:example.com",
-			message:           "hello 3",
+			message:           "The database migration completed successfully.",
 			stateEventStatus:  200,
 			joinedMemStatus:   500,
 			expectErr:         true,
@@ -78,7 +78,7 @@ func TestSendToRoom(t *testing.T) {
 		{
 			name:              "state_store_membership_err",
 			roomID:            "!room4:example.com",
-			message:           "hello 4",
+			message:           "Reminder: Submit your timesheets by Friday.",
 			stateEventStatus:  200,
 			joinedMemStatus:   200,
 			setMembershipErr:  errors.New("mock set membership error"),
@@ -88,7 +88,7 @@ func TestSendToRoom(t *testing.T) {
 		{
 			name:              "send_message_err",
 			roomID:            "!room5:example.com",
-			message:           "hello 5",
+			message:           "I encountered a bug in the staging environment.",
 			stateEventStatus:  404,
 			sendMsgStatus:     500,
 			expectErr:         true,
@@ -97,7 +97,7 @@ func TestSendToRoom(t *testing.T) {
 		{
 			name:             "success_unencrypted",
 			roomID:           "!room6:example.com",
-			message:          "hello 6",
+			message:          "This is an unencrypted test message.",
 			stateEventStatus: 404,
 			sendMsgStatus:    200,
 			expectErr:        false,
@@ -105,7 +105,7 @@ func TestSendToRoom(t *testing.T) {
 		{
 			name:             "success_encrypted",
 			roomID:           "!room7:example.com",
-			message:          "hello 7",
+			message:          "Secure transmission confirmed.",
 			stateEventStatus: 200,
 			joinedMemStatus:  200,
 			sendMsgStatus:    200,
@@ -114,7 +114,7 @@ func TestSendToRoom(t *testing.T) {
 		{
 			name:             "success_html",
 			roomID:           "!room_html:example.com",
-			message:          "<b>hello html</b>",
+			message:          "<b>Important update:</b> Server maintenance at midnight.",
 			stateEventStatus: 404,
 			sendMsgStatus:    200,
 			expectErr:        false,
@@ -123,7 +123,7 @@ func TestSendToRoom(t *testing.T) {
 		{
 			name:             "success_markdown",
 			roomID:           "!room_md:example.com",
-			message:          "**hello markdown**",
+			message:          "**Action Required:** Please approve the pull request.",
 			stateEventStatus: 404,
 			sendMsgStatus:    200,
 			expectErr:        false,
@@ -207,6 +207,7 @@ func verifySendToRoomResult(t *testing.T, tt *sendToRoomTestCase, eventID string
 type sendTestCase struct {
 	sendToRoomErr     error
 	jsonMarshalErr    error
+	mockErr           error
 	name              string
 	roomsStr          string
 	message           string
@@ -217,6 +218,7 @@ type sendTestCase struct {
 	expectErr         bool
 	isHTML            bool
 	isMarkdown        bool
+	jsonMode          bool
 }
 
 func TestSend(t *testing.T) {
@@ -224,49 +226,91 @@ func TestSend(t *testing.T) {
 		{
 			name:              "no_rooms",
 			roomsStr:          "",
-			message:           "hello 8",
+			message:           "Test broadcast to empty room list.",
 			expectErr:         true,
 			expectErrContains: "no rooms specified",
 		},
 		{
 			name:         "success",
 			roomsStr:     "!room8:example.com",
-			message:      "hello 9",
+			message:      "System alert: high CPU usage detected.",
 			expectErr:    false,
-			expectStdout: `"status":"success"`,
+			expectStdout: `Successfully sent message to !room8:example.com (Event ID: $event1)`,
+		},
+		{
+			name:         "success_json",
+			roomsStr:     "!room8_json:example.com",
+			message:      "System alert: memory usage critical.",
+			expectErr:    false,
+			jsonMode:     true,
+			expectStdout: `"status": "success"`,
 		},
 		{
 			name:          "send_to_room_err",
 			roomsStr:      "!room9:example.com !room10:example.com",
-			message:       "hello 10",
+			message:       "Failed delivery simulation.",
 			sendToRoomErr: errors.New("mock send error"),
 			expectErr:     false,
-			expectStdout:  `"status":"error"`,
+			expectStdout:  `Failed to send message to !room9:example.com: failed to fetch room encryption state: M_UNKNOWN (HTTP 500): mock send error`,
+		},
+		{
+			name:              "send_to_room_err_stdout_fails",
+			roomsStr:          "!room9_err:example.com",
+			message:           "Failed delivery with stdout error.",
+			sendToRoomErr:     errors.New("mock send error"),
+			stdoutErrNum:      1,
+			mockErr:           errors.New("failed to write error to stdout"),
+			expectErr:         true,
+			expectErrContains: "stdout write error: failed to write error to stdout",
+		},
+		{
+			name:          "send_to_room_err_json",
+			roomsStr:      "!room9_json:example.com",
+			message:       "Failed delivery simulation in JSON.",
+			sendToRoomErr: errors.New("mock send error"),
+			expectErr:     false,
+			jsonMode:      true,
+			expectStdout:  `"status": "error"`,
 		},
 		{
 			name:              "stdout_print_err_stderr_fails",
-			roomsStr:          "!room11:example.com",
-			message:           "hello 11",
+			roomsStr:          "!room11a:example.com",
+			message:           "Testing JSON output failure with stderr.",
+			jsonMode:          true,
 			stdoutErrNum:      1,
 			stderrErrNum:      1,
+			mockErr:           errors.New("failed to write send json"),
 			expectErr:         true,
-			expectErrContains: "failed to output result",
+			expectErrContains: "stdout write error: failed to write send json",
 		},
 		{
 			name:              "stdout_print_err_stderr_ok",
-			roomsStr:          "!room11:example.com",
-			message:           "hello 11",
+			roomsStr:          "!room11b:example.com",
+			message:           "Testing JSON output failure without stderr.",
+			jsonMode:          true,
 			stdoutErrNum:      1,
 			stderrErrNum:      0,
+			mockErr:           errors.New("failed to write send json (stderr ok)"),
 			expectErr:         true,
-			expectErrContains: "failed to output result",
+			expectErrContains: "stdout write error: failed to write send json (stderr ok)",
 		},
 		{
-			name:           "json_marshal_err",
-			roomsStr:       "!room12:example.com",
-			message:        "hello 12",
-			jsonMarshalErr: errors.New("mock json error"),
-			expectErr:      false,
+			name:              "stdout_print_err_not_json",
+			roomsStr:          "!room11c:example.com !room11d:example.com",
+			message:           "Testing plain text output failure.",
+			stdoutErrNum:      1,
+			mockErr:           errors.New("failed to write send text"),
+			expectErr:         true,
+			expectErrContains: "stdout write error: failed to write send text",
+		},
+		{
+			name:              "json_marshal_err",
+			roomsStr:          "!room12:example.com",
+			message:           "Testing JSON marshaling error handling.",
+			jsonMode:          true,
+			jsonMarshalErr:    errors.New("mock json error"),
+			expectErr:         true,
+			expectErrContains: "failed to marshal results: mock json error",
 		},
 	}
 
@@ -275,29 +319,32 @@ func TestSend(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			origStdout := stdout
 			origStderr := stderr
+			origJSONMode := JSONMode
 			defer func() {
 				stdout = origStdout
 				stderr = origStderr
+				JSONMode = origJSONMode
 			}()
+			JSONMode = tt.jsonMode
 
 			var outBuf bytes.Buffer
 			if tt.stdoutErrNum > 0 {
-				stdout = &errorWriter{failOnWriteNum: tt.stdoutErrNum}
+				stdout = &errorWriter{failOnWriteNum: tt.stdoutErrNum, mockErr: tt.mockErr}
 			} else {
 				stdout = &outBuf
 			}
 
 			var errBuf bytes.Buffer
 			if tt.stderrErrNum > 0 {
-				stderr = &errorWriter{failOnWriteNum: tt.stderrErrNum}
+				stderr = &errorWriter{failOnWriteNum: tt.stderrErrNum, mockErr: tt.mockErr}
 			} else {
 				stderr = &errBuf
 			}
 
 			if tt.jsonMarshalErr != nil {
-				origJSON := jsonMarshal
-				defer func() { jsonMarshal = origJSON }()
-				jsonMarshal = func(_ any) ([]byte, error) {
+				origJSON := jsonMarshalIndent
+				defer func() { jsonMarshalIndent = origJSON }()
+				jsonMarshalIndent = func(_ any, _, _ string) ([]byte, error) {
 					return nil, tt.jsonMarshalErr
 				}
 			}

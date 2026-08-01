@@ -57,22 +57,28 @@ func (f *LevelFlag) IsBoolFlag() bool {
 
 // Setup initializes a Logger based on the provided level.
 // If level is 0, it returns a Nop logger.
-func Setup(level int, out io.Writer) Logger {
-	if level == 0 {
+func Setup(level int, jsonMode bool, out io.Writer) Logger {
+	if !jsonMode && level == 0 {
 		return Nop()
 	}
 
-	consoleWriter := zerolog.ConsoleWriter{
-		Out:        out,
-		TimeFormat: time.RFC3339,
+	writer := out
+	if !jsonMode {
+		writer = zerolog.ConsoleWriter{
+			Out:        out,
+			TimeFormat: time.RFC3339,
+		}
 	}
 
-	logger := zerolog.New(consoleWriter).With().Timestamp().Logger()
+	logger := zerolog.New(writer).With().Timestamp().Logger()
 
-	if level >= 2 {
+	switch {
+	case level >= 2:
 		logger = logger.Level(zerolog.TraceLevel)
-	} else {
+	case level == 1:
 		logger = logger.Level(zerolog.DebugLevel)
+	case jsonMode:
+		logger = logger.Level(zerolog.ErrorLevel)
 	}
 
 	return logger

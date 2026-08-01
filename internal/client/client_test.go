@@ -16,6 +16,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/underhax/matrix-cli/internal/config"
+	"github.com/underhax/matrix-cli/internal/consts"
 )
 
 func TestNew_Success(t *testing.T) {
@@ -78,7 +79,7 @@ func TestNew_Success(t *testing.T) {
 	verificationHelperInit = func(_ context.Context, _ *verificationhelper.VerificationHelper) error { return nil }
 
 	nopLog := logger.Nop()
-	clientObj, err := New(ctx, session, db, picklePath, &nopLog)
+	clientObj, err := New(ctx, session, db, picklePath, &nopLog, consts.ModeVerify)
 	if err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
@@ -150,7 +151,7 @@ func TestNew_Failure(t *testing.T) {
 		return nil, errors.New("mock mautrix error")
 	}
 	nopLog := logger.Nop()
-	_, err := New(ctx, session, db, picklePath, &nopLog)
+	_, err := New(ctx, session, db, picklePath, &nopLog, "")
 	if err == nil || !strings.Contains(err.Error(), "mock mautrix error") {
 		t.Errorf("expected mautrix error, got %v", err)
 	}
@@ -162,7 +163,7 @@ func TestNew_Failure(t *testing.T) {
 	dbutilNewWithDB = func(_ *sql.DB, _ string) (*dbutil.Database, error) {
 		return nil, errors.New("mock dbutil error")
 	}
-	_, err = New(ctx, session, db, picklePath, &nopLog)
+	_, err = New(ctx, session, db, picklePath, &nopLog, "")
 	if err == nil || !strings.Contains(err.Error(), "mock dbutil error") {
 		t.Errorf("expected dbutil error, got %v", err)
 	}
@@ -171,7 +172,7 @@ func TestNew_Failure(t *testing.T) {
 	getOrGeneratePickleKey = func(_ string) ([]byte, error) {
 		return nil, errors.New("mock pickle error")
 	}
-	_, err = New(ctx, session, db, picklePath, &nopLog)
+	_, err = New(ctx, session, db, picklePath, &nopLog, "")
 	if err == nil || !strings.Contains(err.Error(), "mock pickle error") {
 		t.Errorf("expected pickle error, got %v", err)
 	}
@@ -180,7 +181,7 @@ func TestNew_Failure(t *testing.T) {
 	newCryptoHelper = func(_ *mautrix.Client, _ []byte, _ any) (*cryptohelper.CryptoHelper, error) {
 		return nil, errors.New("mock new ch error")
 	}
-	_, err = New(ctx, session, db, picklePath, &nopLog)
+	_, err = New(ctx, session, db, picklePath, &nopLog, "")
 	if err == nil || !strings.Contains(err.Error(), "mock new ch error") {
 		t.Errorf("expected new ch error, got %v", err)
 	}
@@ -191,7 +192,7 @@ func TestNew_Failure(t *testing.T) {
 	cryptoHelperInit = func(_ context.Context, _ *cryptohelper.CryptoHelper) error {
 		return errors.New("mock init ch error")
 	}
-	_, err = New(ctx, session, db, picklePath, &nopLog)
+	_, err = New(ctx, session, db, picklePath, &nopLog, "")
 	if err == nil || !strings.Contains(err.Error(), "mock init ch error") {
 		t.Errorf("expected init ch error, got %v", err)
 	}
@@ -200,7 +201,7 @@ func TestNew_Failure(t *testing.T) {
 	verificationHelperInit = func(_ context.Context, _ *verificationhelper.VerificationHelper) error {
 		return errors.New("mock init vh error")
 	}
-	_, err = New(ctx, session, db, picklePath, &nopLog)
+	_, err = New(ctx, session, db, picklePath, &nopLog, consts.ModeVerify)
 	if err == nil || !strings.Contains(err.Error(), "mock init vh error") {
 		t.Errorf("expected init vh error, got %v", err)
 	}

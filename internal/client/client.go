@@ -14,6 +14,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/underhax/matrix-cli/internal/config"
+	"github.com/underhax/matrix-cli/internal/consts"
 	"github.com/underhax/matrix-cli/internal/logger"
 )
 
@@ -26,6 +27,7 @@ type Client struct {
 	VH                     *verificationhelper.VerificationHelper
 	secretTimer            *time.Timer
 	Log                    logger.Logger
+	Mode                   string
 	ActiveVerificationUser id.UserID
 	secretsMu              sync.Mutex
 }
@@ -36,8 +38,11 @@ const (
 	statusSuccess   = "success"
 )
 
+// JSONMode globally indicates whether strict machine output is requested.
+var JSONMode bool
+
 // New creates a new Client instance.
-func New(ctx context.Context, session *config.Session, db *sql.DB, picklePath string, log *logger.Logger) (*Client, error) {
+func New(ctx context.Context, session *config.Session, db *sql.DB, picklePath string, log *logger.Logger, mode string) (*Client, error) {
 	cli, err := mautrixNewClient(session.HomeserverURL, id.UserID(session.UserID), session.AccessToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create matrix client: %w", err)
@@ -71,6 +76,7 @@ func New(ctx context.Context, session *config.Session, db *sql.DB, picklePath st
 		Crypto: ch,
 		DB:     db,
 		Log:    *log,
+		Mode:   mode,
 	}
 
 	doMigrateSecrets(ctx, clientObj)
@@ -79,16 +85,18 @@ func New(ctx context.Context, session *config.Session, db *sql.DB, picklePath st
 
 	doLoadSecrets(ctx, clientObj)
 
-	handler := &VerificationHandler{client: clientObj}
+	if mode == consts.ModeVerify {
+		handler := &VerificationHandler{client: clientObj}
 
-	supportsQRShow := false
-	supportsQRScan := false
-	supportsSAS := true
-	vh := newVerificationHelper(cli, mach, verificationhelper.NewInMemoryVerificationStore(), handler, supportsQRShow, supportsQRScan, supportsSAS)
-	if err := verificationHelperInit(ctx, vh); err != nil {
-		return nil, fmt.Errorf("failed to init verification helper: %w", err)
+		supportsQRShow := false
+		supportsQRScan := false
+		supportsSAS := true
+		vh := newVerificationHelper(cli, mach, verificationhelper.NewInMemoryVerificationStore(), handler, supportsQRShow, supportsQRScan, supportsSAS)
+		if err := verificationHelperInit(ctx, vh); err != nil {
+			return nil, fmt.Errorf("failed to init verification helper: %w", err)
+		}
+		clientObj.VH = vh
 	}
-	clientObj.VH = vh
 
 	return clientObj, nil
 }

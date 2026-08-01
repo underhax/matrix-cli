@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/underhax/matrix-cli/internal/ui/spinner"
 
@@ -39,8 +40,9 @@ type DetailedRoomInfo struct {
 	Encrypted   bool         `json:"encrypted"`
 }
 
-// Rooms fetches the list of joined rooms for the authenticated account and outputs it as JSON.
-// If verbose is true, it fetches detailed metadata for each room using a progress spinner.
+// Rooms fetches the list of joined rooms for the authenticated account.
+// It supports both human-readable and JSON output formats.
+// If verbose is true, it fetches detailed metadata for each room.
 func (c *Client) Rooms(ctx context.Context, verbose bool) error {
 	resp, err := c.Matrix.JoinedRooms(ctx)
 	if err != nil {
@@ -48,19 +50,15 @@ func (c *Client) Rooms(ctx context.Context, verbose bool) error {
 	}
 
 	if !verbose {
-		payload, marshalErr := jsonMarshalIndent(resp, "", "  ")
-		if marshalErr != nil {
-			return fmt.Errorf("failed to marshal rooms: %w", marshalErr)
-		}
-		if _, writeErr := fmt.Fprintln(stdout, string(payload)); writeErr != nil {
-			return fmt.Errorf("stdout write error: %w", writeErr)
-		}
-		return nil
+		return c.printBasicRooms(resp)
 	}
 
 	var completed atomic.Int32
 	total := len(resp.JoinedRooms)
-	stopSpinner := spinner.Start(ctx, "Fetching room details...", &completed, total)
+	stopSpinner := func() {}
+	if !JSONMode {
+		stopSpinner = spinner.Start(ctx, "Fetching room details...", &completed, total)
+	}
 
 	var details []RoomDetail
 	for _, roomID := range resp.JoinedRooms {
@@ -70,12 +68,55 @@ func (c *Client) Rooms(ctx context.Context, verbose bool) error {
 	}
 	stopSpinner()
 
-	payload, err := jsonMarshalIndent(details, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal detailed rooms: %w", err)
+	return c.printDetailedRooms(details)
+}
+
+func (c *Client) printBasicRooms(resp *mautrix.RespJoinedRooms) error {
+	if JSONMode {
+		payload, marshalErr := jsonMarshalIndent(resp, "", "  ")
+		if marshalErr != nil {
+			return fmt.Errorf("failed to marshal rooms: %w", marshalErr)
+		}
+		if _, writeErr := fmt.Fprintln(stdout, string(payload)); writeErr != nil {
+			return fmt.Errorf("stdout write error: %w", writeErr)
+		}
+		return nil
 	}
-	if _, err := fmt.Fprintln(stdout, string(payload)); err != nil {
-		return fmt.Errorf("stdout write error: %w", err)
+	for _, roomID := range resp.JoinedRooms {
+		if _, writeErr := fmt.Fprintf(stdout, "- %s\n", roomID); writeErr != nil {
+			return fmt.Errorf("stdout write error: %w", writeErr)
+		}
+	}
+	return nil
+}
+
+func (c *Client) printDetailedRooms(details []RoomDetail) error {
+	if JSONMode {
+		payload, err := jsonMarshalIndent(details, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal detailed rooms: %w", err)
+		}
+		if _, err := fmt.Fprintln(stdout, string(payload)); err != nil {
+			return fmt.Errorf("stdout write error: %w", err)
+		}
+		return nil
+	}
+	for i := range details {
+		detail := &details[i]
+		var parts []string
+		if detail.Name != "" {
+			parts = append(parts, "Name: "+detail.Name)
+		}
+		if detail.CanonicalAlias != "" {
+			parts = append(parts, "Alias: "+detail.CanonicalAlias)
+		}
+		infoStr := ""
+		if len(parts) > 0 {
+			infoStr = " (" + strings.Join(parts, ", ") + ")"
+		}
+		if _, err := fmt.Fprintf(stdout, "- %s%s\n", detail.RoomID, infoStr); err != nil {
+			return fmt.Errorf("stdout write error: %w", err)
+		}
 	}
 	return nil
 }
@@ -154,7 +195,8 @@ func (c *Client) fetchDetailedRoomMetadata(ctx context.Context, roomID id.RoomID
 	return info
 }
 
-// RoomInfo fetches and prints the detailed metadata for specific rooms.
+// RoomInfo fetches and prints detailed metadata for specific rooms.
+// It supports both human-readable and JSON output formats.
 func (c *Client) RoomInfo(ctx context.Context, roomsStr string) error {
 	roomList := strings.Fields(roomsStr)
 	if len(roomList) == 0 {
@@ -162,7 +204,10 @@ func (c *Client) RoomInfo(ctx context.Context, roomsStr string) error {
 	}
 
 	var completed atomic.Int32
-	stopSpinner := spinner.Start(ctx, "Fetching room information...", &completed, len(roomList))
+	stopSpinner := func() {}
+	if !JSONMode {
+		stopSpinner = spinner.Start(ctx, "Fetching room information...", &completed, len(roomList))
+	}
 
 	results := make([]DetailedRoomInfo, 0, len(roomList))
 	for _, r := range roomList {
@@ -172,15 +217,59 @@ func (c *Client) RoomInfo(ctx context.Context, roomsStr string) error {
 	}
 	stopSpinner()
 
-	payload, err := jsonMarshalIndent(results, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal room details: %w", err)
+	return c.printRoomInfoResults(results)
+}
+
+func (c *Client) printRoomInfoResults(results []DetailedRoomInfo) error {
+	if JSONMode {
+		payload, err := jsonMarshalIndent(results, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal room details: %w", err)
+		}
+
+		if _, err := fmt.Fprintln(stdout, string(payload)); err != nil {
+			return fmt.Errorf("stdout write error: %w", err)
+		}
+		return nil
 	}
 
-	if _, err := fmt.Fprintln(stdout, string(payload)); err != nil {
-		return fmt.Errorf("stdout write error: %w", err)
+	for i := range results {
+		if err := c.printSingleRoomInfo(&results[i]); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func (c *Client) printSingleRoomInfo(res *DetailedRoomInfo) error {
+	var writeErr error
+	printf := func(format string, args ...any) {
+		if writeErr != nil {
+			return
+		}
+		if _, err := fmt.Fprintf(stdout, format, args...); err != nil {
+			writeErr = fmt.Errorf("stdout write error: %w", err)
+		}
+	}
+
+	printf("\nRoom: %s\n", res.RoomID)
+	if res.Name != "" {
+		printf("  Name: %s\n", res.Name)
+	}
+	if res.CanonicalAlias != "" {
+		printf("  Alias: %s\n", res.CanonicalAlias)
+	}
+	if res.Topic != "" {
+		printf("  Topic: %s\n", res.Topic)
+	}
+	printf("  Creator: %s\n", res.Creator)
+	printf("  Version: %s\n", res.Version)
+	printf("  Encrypted: %t\n", res.Encrypted)
+	printf("  Members (%d):\n", res.MemberCount)
+	for _, m := range res.Members {
+		printf("    - %s (%s, Power Level: %d)\n", m.UserID, m.Role, m.PowerLevel)
+	}
+	return writeErr
 }
 
 type deviceInfo struct {
@@ -209,7 +298,8 @@ func trustStateToString(trust id.TrustState) string {
 	}
 }
 
-// Devices fetches the list of active devices for the authenticated account and outputs it as JSON.
+// Devices fetches the list of active devices for the authenticated account.
+// It supports both human-readable and JSON output formats.
 func (c *Client) Devices(ctx context.Context) error {
 	resp, err := c.Matrix.GetDevicesInfo(ctx)
 	if err != nil {
@@ -240,13 +330,52 @@ func (c *Client) Devices(ctx context.Context) error {
 		}
 	}
 
-	payload, err := jsonMarshalIndent(enriched, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal devices: %w", err)
+	return c.printDevices(enriched)
+}
+
+func (c *Client) printDevices(enriched devicesInfo) error {
+	if JSONMode {
+		payload, err := jsonMarshalIndent(enriched, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal devices: %w", err)
+		}
+
+		if _, err := fmt.Fprintln(stdout, string(payload)); err != nil {
+			return fmt.Errorf("stdout write error: %w", err)
+		}
+		return nil
 	}
 
-	if _, err := fmt.Fprintln(stdout, string(payload)); err != nil {
-		return fmt.Errorf("stdout write error: %w", err)
+	var writeErr error
+	printf := func(format string, args ...any) {
+		if writeErr != nil {
+			return
+		}
+		if _, err := fmt.Fprintf(stdout, format, args...); err != nil {
+			writeErr = fmt.Errorf("stdout write error: %w", err)
+		}
 	}
-	return nil
+
+	printf("\nDevices (%d):\n", len(enriched.Devices))
+	for i := range enriched.Devices {
+		d := &enriched.Devices[i]
+		trustStr := d.TrustState
+		if trustStr == "" {
+			trustStr = "unknown"
+		}
+		if d.DisplayName != "" {
+			printf("  - %s (%s)\n", d.DeviceID, d.DisplayName)
+		} else {
+			printf("  - %s\n", d.DeviceID)
+		}
+		printf("    Trust: %s\n", trustStr)
+		if d.LastSeenIP != "" {
+			printf("    Last Seen IP: %s\n", d.LastSeenIP)
+		}
+		if d.LastSeenTS > 0 {
+			ts := time.UnixMilli(d.LastSeenTS).Format("2006-01-02 15:04:05")
+			printf("    Last Seen: %s\n", ts)
+		}
+	}
+	return writeErr
 }

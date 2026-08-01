@@ -23,13 +23,16 @@ jobs:
           go-version-file: "go.mod"
 
       - name: Install Cross-Compilers
-        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+        run: |
+          sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+          wget -qO- https://musl.cc/mipsel-linux-muslsf-cross.tgz | tar -xz -C /tmp
+          echo "/tmp/mipsel-linux-muslsf-cross/bin" >> $GITHUB_PATH
 
       - name: Build and Archive
         run: |
           mkdir -p release_assets
 
-          TARGETS="linux/amd64 linux/arm64"
+          TARGETS="linux/amd64 linux/arm64 linux/mipsle"
 
           for target in $TARGETS; do
             GOOS=${target%/*}
@@ -45,12 +48,21 @@ jobs:
 
             OUTPUT_NAME="matrix-cli"
             CC="gcc"
+            LDFLAGS="-s -w -X 'main.AppVersion=${{ github.ref_name }}'"
 
             if [ "$GOARCH" = "arm64" ]; then
               CC="aarch64-linux-gnu-gcc"
+            elif [ "$GOARCH" = "mipsle" ]; then
+              CC="mipsel-linux-muslsf-gcc"
+              FRIENDLY_ARCH="mipsle-softfloat"
+              LDFLAGS="-s -w -X 'main.AppVersion=${{ github.ref_name }}' -extldflags \"-static\""
             fi
 
-            CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH CC=$CC go build -tags goolm -trimpath -ldflags "-s -w -X 'main.AppVersion=${{ github.ref_name }}'" -o "build_${GOOS}_${GOARCH}/${OUTPUT_NAME}" ./cmd/matrix-cli
+            if [ "$GOARCH" = "mipsle" ]; then
+              GOMIPS=softfloat CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH CC=$CC go build -tags goolm -trimpath -ldflags "$LDFLAGS" -o "build_${GOOS}_${GOARCH}/${OUTPUT_NAME}" ./cmd/matrix-cli
+            else
+              CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH CC=$CC go build -tags goolm -trimpath -ldflags "$LDFLAGS" -o "build_${GOOS}_${GOARCH}/${OUTPUT_NAME}" ./cmd/matrix-cli
+            fi
 
             cd "build_${GOOS}_${GOARCH}"
             tar -czvf "../release_assets/matrix-cli-${FRIENDLY_OS}-${FRIENDLY_ARCH}.tar.gz" ./*

@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 
 	"github.com/underhax/matrix-cli/internal/config"
 	"github.com/underhax/matrix-cli/internal/ui/spinner"
@@ -52,6 +53,7 @@ func defaultTempFileClose(f *os.File) error {
 var SupportedPlatforms = map[string]string{
 	"linux/amd64":   "matrix-cli-linux-amd64.tar.gz",
 	"linux/arm64":   "matrix-cli-linux-arm64.tar.gz",
+	"linux/mipsle":  "matrix-cli-linux-mipsle-softfloat.tar.gz",
 	"darwin/amd64":  "matrix-cli-macos-intel.tar.gz",
 	"darwin/arm64":  "matrix-cli-macos-apple-silicon.tar.gz",
 	"windows/amd64": "matrix-cli-windows-x64.zip",
@@ -122,8 +124,10 @@ func Update(ctx context.Context, client *http.Client, currentVersion string) err
 		return fmt.Errorf("unsupported platform: %s", platformKey)
 	}
 
-	fetchSpinner := spinner.Start(ctx, "Fetching latest version from GitHub...", nil, 0)
+	var fetchCompleted atomic.Int32
+	fetchSpinner := spinner.Start(ctx, "Fetching latest version from GitHub...", &fetchCompleted, 1)
 	release, err := fetchLatestRelease(ctx, client)
+	fetchCompleted.Store(1)
 	fetchSpinner()
 	if err != nil {
 		return err
@@ -156,7 +160,8 @@ func Update(ctx context.Context, client *http.Client, currentVersion string) err
 	}
 
 	label := "Downloading " + release.TagName
-	stopSpinner := spinner.Start(ctx, label, nil, 0)
+	var downloadCompleted atomic.Int32
+	stopSpinner := spinner.Start(ctx, label, &downloadCompleted, 1)
 
 	bodyBytes, err := downloadAndVerifyAsset(ctx, client, downloadURL, expectedDigest)
 	if err != nil {
@@ -181,6 +186,9 @@ func Update(ctx context.Context, client *http.Client, currentVersion string) err
 		err = replacePOSIX(bytes.NewReader(bodyBytes), execPath)
 	}
 
+	if err == nil {
+		downloadCompleted.Store(1)
+	}
 	stopSpinner()
 
 	if err == nil {

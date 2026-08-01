@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/underhax/matrix-cli/internal/consts"
 )
 
 func captureStderr(t *testing.T, f func()) string {
@@ -40,15 +42,15 @@ func TestPrintUsage(t *testing.T) {
 		modeVal  string
 		wantText string
 	}{
-		{"ModeAuth", modeAuth, "Usage: matrix-cli --mode auth"},
-		{"ModeBootstrap", modeBootstrap, "Usage: matrix-cli --mode bootstrap"},
-		{"ModeListen", modeListen, "Usage: matrix-cli --mode listen"},
-		{"ModeSend", modeSend, "Usage: matrix-cli --mode send"},
-		{"ModeVerify", modeVerify, "Usage: matrix-cli --mode verify"},
-		{"ModeRooms", modeRooms, "Usage: matrix-cli --mode rooms"},
-		{"ModeRoomInfo", modeRoomInfo, "Usage: matrix-cli --mode room-info"},
-		{"ModeDevices", modeDevices, "Usage: matrix-cli --mode devices"},
-		{"ModeLogout", modeLogout, "Usage: matrix-cli --mode logout"},
+		{"ModeAuth", consts.ModeAuth, "Usage: matrix-cli --mode auth"},
+		{"ModeBootstrap", consts.ModeBootstrap, "Usage: matrix-cli --mode bootstrap"},
+		{"ModeListen", consts.ModeListen, "Usage: matrix-cli --mode listen"},
+		{"ModeSend", consts.ModeSend, "Usage: matrix-cli --mode send"},
+		{"ModeVerify", consts.ModeVerify, "Usage: matrix-cli --mode verify"},
+		{"ModeRooms", consts.ModeRooms, "Usage: matrix-cli --mode rooms"},
+		{"ModeRoomInfo", consts.ModeRoomInfo, "Usage: matrix-cli --mode room-info"},
+		{"ModeDevices", consts.ModeDevices, "Usage: matrix-cli --mode devices"},
+		{"ModeLogout", consts.ModeLogout, "Usage: matrix-cli --mode logout"},
 		{"UnknownMode", "unknown-mode-123", "matrix-cli - A headless Matrix client"},
 	}
 

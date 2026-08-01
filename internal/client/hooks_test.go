@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/underhax/matrix-cli/internal/consts"
 	"github.com/underhax/matrix-cli/internal/logger"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/crypto"
@@ -276,9 +277,14 @@ func TestDebugHandleSecretRequest(_ *testing.T) {
 	defer func() { timeAfterFunc = origTimeAfterFunc }()
 	timeAfterFunc = mockTimeAfterFunc
 
+	c.Mode = consts.ModeVerify
 	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test10.example.com", req)
 
+	mach.Client.UserID = "@user:test10.5.example.com"
+	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test10.5.example.com", req)
+
 	mach.Client.UserID = "@user:test11.example.com"
+	c.Mode = consts.ModeListen
 	defaultDebugHandleSecretRequest(ctx, c, mach, "@user:test11.example.com", req)
 }
 

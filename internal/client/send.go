@@ -12,8 +12,10 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-// Send fetches the room membership topology, populates the state store for key distribution,
-// and dispatches the message through the CryptoHelper auto-encryption pipeline to multiple rooms.
+// Send fetches the room membership topology, populates the state store,
+// and dispatches the message with auto-encryption to multiple rooms.
+// It supports sending plain text, HTML, and Markdown messages.
+// It supports both human-readable and JSON output formats.
 func (c *Client) Send(ctx context.Context, roomsStr, message string, isHTML, isMarkdown bool) error {
 	roomList := strings.Fields(roomsStr)
 	if len(roomList) == 0 {
@@ -39,16 +41,36 @@ func (c *Client) Send(ctx context.Context, roomsStr, message string, isHTML, isM
 		results = append(results, res)
 	}
 
-	if payload, err := jsonMarshal(results); err == nil {
+	if JSONMode {
+		payload, err := jsonMarshalIndent(results, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal results: %w", err)
+		}
 		if _, writeErr := fmt.Fprintln(stdout, string(payload)); writeErr != nil {
-			if _, printErr := fmt.Fprintf(stderr, "failed to write json: %v\n", writeErr); printErr != nil {
-				return fmt.Errorf("failed to output result: %w", writeErr)
-			}
-			return fmt.Errorf("failed to output result: %w", writeErr)
+			return fmt.Errorf("stdout write error: %w", writeErr)
+		}
+		return nil
+	}
+
+	var writeErr error
+	printf := func(format string, args ...any) {
+		if writeErr != nil {
+			return
+		}
+		if _, err := fmt.Fprintf(stdout, format, args...); err != nil {
+			writeErr = fmt.Errorf("stdout write error: %w", err)
 		}
 	}
 
-	return nil
+	for _, res := range results {
+		roomID := res["room_id"]
+		if res[jsonKeyStatus] == statusSuccess {
+			printf("Successfully sent message to %s (Event ID: %s)\n", roomID, res["event_id"])
+		} else {
+			printf("Failed to send message to %s: %s\n", roomID, res["error"])
+		}
+	}
+	return writeErr
 }
 
 func (c *Client) sendToRoom(ctx context.Context, parsedRoom id.RoomID, message string, isHTML, isMarkdown bool) (string, error) {

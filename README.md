@@ -97,48 +97,71 @@ Examples:
 
 ### Sending Messages (`send`)
 ```text
-Usage: matrix-cli --mode send --rooms '<ID>' --message '<TEXT>' [--html | --markdown] [--data-dir <PATH>]
+Usage: matrix-cli --mode send --rooms '<ID>' --message '<TEXT>' [--html | --markdown] [--json] [--data-dir <PATH>]
 Send a message to one or more rooms. Supports optional HTML or Markdown formatting.
 
 Examples:
   # Send a standard text message:
-  matrix-cli --mode send --rooms '!abc123:matrix.org' --message 'Hello!'
-  matrix-cli --mode send --rooms '!abc123:matrix.org !def456:matrix.org' --message 'Broadcast!'
+  matrix-cli --mode send --rooms '!room1:example.com' --message 'Hello world!'
+  matrix-cli --mode send --rooms '!room1:example.com !opaque-v12_roomid' --message 'Broadcast!'
 
   # Send a message parsed as Markdown:
-  matrix-cli --mode send --rooms '!abc123:matrix.org' --markdown --message '**Hello** from *Matrix CLI*!'
+  matrix-cli --mode send --rooms '!room1:example.com' --markdown --message '**Hello** from *Matrix CLI*!'
 
   # Send a message with raw HTML tags:
-  matrix-cli --mode send --rooms '!abc123:matrix.org' --html --message '<b>Hello</b> from <i>Matrix CLI</i>!'
+  matrix-cli --mode send --rooms '!room1:example.com' --html --message '<b>Hello</b> from <i>Matrix CLI</i>!'
+
+  # Send a message and output results in JSON format:
+  matrix-cli --mode send --rooms '!room1:example.com !opaque-v12_roomid' --message 'Hello' --json
 ```
 
 ### Listening for Events (`listen`)
 ```text
-Usage: matrix-cli --mode listen [--rooms '<ID1> <ID2>'] [--data-dir <PATH>]
+Usage: matrix-cli --mode listen [--rooms '<ID1> <ID2>'] [--json] [--data-dir <PATH>]
 Listen for incoming messages and events. If --rooms is provided, only events from those rooms are processed.
 
 Examples:
   matrix-cli --mode listen
-  matrix-cli --mode listen --rooms '!abc123:matrix.org !def456:matrix.org'
-  matrix-cli --mode listen 2>/dev/null
+  matrix-cli --mode listen --rooms '!room1:example.com !opaque-v12_roomid'
+
+  # Listen for incoming events and stream output as JSON:
+  matrix-cli --mode listen --json
 ```
 
 ### Fetching Room Information (`rooms` & `room-info`)
 ```text
-Usage: matrix-cli --mode rooms [--verbose] [--data-dir <PATH>]
+Usage: matrix-cli --mode rooms [--verbose] [--json] [--data-dir <PATH>]
 List joined rooms. Use --verbose to fetch name, topic, and alias for each room.
 
 Examples:
   matrix-cli --mode rooms
-  matrix-cli --mode rooms --verbose
+  matrix-cli --mode rooms --verbose --data-dir ./Data
+
+  # Get rooms as a JSON array:
+  matrix-cli --mode rooms --json
 ```
 ```text
-Usage: matrix-cli --mode room-info --rooms '<ID>' [--data-dir <PATH>]
+Usage: matrix-cli --mode room-info --rooms '<ID>' [--json] [--data-dir <PATH>]
 Get detailed info for specific room(s).
 
 Examples:
-  matrix-cli --mode room-info --rooms '!abc123:matrix.org'
-  matrix-cli --mode room-info --rooms '!abc123:matrix.org !abc123defg456'
+  matrix-cli --mode room-info --rooms '!room1:example.com !opaque-v12_roomid'
+  matrix-cli --mode room-info --rooms '!opaque-v12_roomid'
+
+  # Output detailed info in JSON format:
+  matrix-cli --mode room-info --rooms '!opaque-v12_roomid' --json
+```
+
+### Listing Devices (`devices`)
+```text
+Usage: matrix-cli --mode devices [--json] [--data-dir <PATH>]
+List active devices for the account.
+
+Examples:
+  matrix-cli --mode devices
+
+  # Output active devices in JSON format:
+  matrix-cli --mode devices --json
 ```
 
 ### Device Verification (`verify`)
@@ -177,7 +200,9 @@ Examples:
 ```
 
 ### Global Options
-All commands support the `--data-dir` flag to specify where the session and database files are stored. By default, this points to your OS's configuration directory (e.g., `~/.config/matrix-cli`).
+All commands support the following global options:
+- `--data-dir`: Specify where the session and database files are stored. By default, this points to your OS's configuration directory (e.g., `~/.config/matrix-cli`).
+- `--json`: Output the result of the command in structured JSON format and suppress standard text output. This is highly recommended for bots and external scripts parsing the output.
 
 ## Docker Deployment
 

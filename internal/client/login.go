@@ -81,7 +81,7 @@ func Login(ctx context.Context, server, user, pass, deviceName, ssoCallbackPort 
 
 func ensureUserAndPass(user, pass string) (finalUser, finalPass string, err error) {
 	if user == "" {
-		if _, err := fmt.Fprint(stdout, "Enter Matrix username: "); err != nil {
+		if _, err := fmt.Fprint(stderr, "Enter Matrix username: "); err != nil {
 			return "", "", fmt.Errorf("failed to prompt for username: %w", err)
 		}
 		reader := bufio.NewReader(stdin)
@@ -175,13 +175,13 @@ func startCallbackServer(ctx context.Context, ssoCallbackPort string, tokenChan 
 func printSSOInstructions(serverURL, redirectURL string) error {
 	ssoURL := fmt.Sprintf("%s/_matrix/client/v3/login/sso/redirect?redirectUrl=%s", strings.TrimSuffix(serverURL, "/"), redirectURL)
 
-	if _, printErr := fmt.Fprintln(stdout, "\nThe server supports SSO/OAuth authentication."); printErr != nil {
+	if _, printErr := fmt.Fprintln(stderr, "\nThe server supports SSO/OAuth authentication."); printErr != nil {
 		return fmt.Errorf("failed to print sso instructions: %w", printErr)
 	}
-	if _, printErr := fmt.Fprintf(stdout, "Please open the following link in your browser to log in:\n\n%s\n\n", ssoURL); printErr != nil {
+	if _, printErr := fmt.Fprintf(stderr, "Please open the following link in your browser to log in:\n\n%s\n\n", ssoURL); printErr != nil {
 		return fmt.Errorf("failed to print sso url: %w", printErr)
 	}
-	if _, printErr := fmt.Fprintln(stdout, "Waiting for browser callback..."); printErr != nil {
+	if _, printErr := fmt.Fprintln(stderr, "Waiting for browser callback..."); printErr != nil {
 		return fmt.Errorf("failed to print waiting message: %w", printErr)
 	}
 	return nil

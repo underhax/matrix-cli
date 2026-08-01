@@ -195,6 +195,18 @@ func TestRun(t *testing.T) {
 			wantErr:   true,
 		},
 		{
+			name:      "json flag not supported in verify",
+			errString: "--json flag is not supported in verify mode",
+			args:      []string{flagMode, consts.ModeVerify, flagJSON},
+			wantErr:   true,
+		},
+		{
+			name:      "json flag not supported in bootstrap",
+			errString: "--json flag is not supported in bootstrap mode",
+			args:      []string{flagMode, consts.ModeBootstrap, flagJSON},
+			wantErr:   true,
+		},
+		{
 			name:      "invalid flag",
 			errString: "flag provided but not defined",
 			args:      []string{"--invalid-flag"},
@@ -203,29 +215,29 @@ func TestRun(t *testing.T) {
 		{
 			name:      "invalid data dir (covers verbose and debug flags)",
 			errString: "failed to create data directory",
-			args:      []string{flagMode, modeAuth, flagVerbose, flagDebug, flagDataDir, "/dev/null/invalid"},
+			args:      []string{flagMode, consts.ModeAuth, flagVerbose, flagDebug, flagDataDir, "/dev/null/invalid"},
 			wantErr:   true,
 		},
 		{
 			name:      "debug level 2",
 			errString: "failed to create data directory",
-			args:      []string{flagMode, modeAuth, "--debug=2", flagDataDir, "/dev/null/invalid"},
+			args:      []string{flagMode, consts.ModeAuth, "--debug=2", flagDataDir, "/dev/null/invalid"},
 			wantErr:   true,
 		},
 		{
 			name:    "validation fails inside run",
-			args:    []string{flagMode, modeAuth, flagServer, "http://[::1]:err", flagDataDir, tmpDir},
+			args:    []string{flagMode, consts.ModeAuth, flagServer, "http://[::1]:err", flagDataDir, tmpDir},
 			wantErr: false,
 		},
 		{
 			name:    "auth mode calls handleAuth",
-			args:    []string{flagMode, modeAuth, flagServer, mockServer.URL, flagDataDir, tmpDir},
+			args:    []string{flagMode, consts.ModeAuth, flagServer, mockServer.URL, flagDataDir, tmpDir},
 			wantErr: true,
 		},
 		{
 			name:      "operations mode calls handleOperations",
 			errString: "failed to load session",
-			args:      []string{flagMode, modeListen, flagDataDir, tmpDir},
+			args:      []string{flagMode, consts.ModeListen, flagDataDir, tmpDir},
 			wantErr:   true,
 		},
 		{

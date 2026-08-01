@@ -6,10 +6,17 @@ import (
 	"strings"
 )
 
+// InteractiveDisabled globally disables interactive prompts in Machine Mode.
+var InteractiveDisabled bool
+
 // ReadPassword securely prompts the user for a password or recovery key.
 // It hides the input characters and returns the trimmed string.
 func ReadPassword(prompt string) (string, error) {
-	if _, err := fmt.Fprint(stdout, prompt); err != nil {
+	if InteractiveDisabled {
+		return "", errors.New("interactive input disabled in json mode")
+	}
+
+	if _, err := fmt.Fprint(stderr, prompt); err != nil {
 		return "", fmt.Errorf("failed to print prompt: %w", err)
 	}
 
@@ -23,7 +30,7 @@ func ReadPassword(prompt string) (string, error) {
 		return "", fmt.Errorf("failed to read password: %w", err)
 	}
 
-	if _, err := fmt.Fprintln(stdout); err != nil {
+	if _, err := fmt.Fprintln(stderr); err != nil {
 		return "", fmt.Errorf("failed to print newline: %w", err)
 	}
 

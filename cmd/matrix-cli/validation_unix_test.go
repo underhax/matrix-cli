@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/underhax/matrix-cli/internal/consts"
 )
 
 func TestValidateInputInsecurePermissions(t *testing.T) {
@@ -20,7 +22,7 @@ func TestValidateInputInsecurePermissions(t *testing.T) {
 		t.Fatalf("failed to set test file permissions: %v", err)
 	}
 
-	got := validateInput(modeListen, "", "", "", badPermFile, badPermFile, badPermFile)
+	got := validateInput(consts.ModeListen, "", "", "", badPermFile, badPermFile, badPermFile)
 	want := []string{
 		`insecure permissions on "` + badPermFile + `" (expected 0600)`,
 		`insecure permissions on "` + badPermFile + `" (expected 0600)`,
