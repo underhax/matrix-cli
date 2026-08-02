@@ -10,8 +10,30 @@ permissions:
 
 jobs:
   release-linux:
-    name: Build Linux
+    name: Build Linux (${{ matrix.target.archive_suffix }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - goarch: amd64
+            archive_suffix: amd64
+            musl: x86_64-linux-musl
+          - goarch: arm64
+            archive_suffix: arm64
+            musl: aarch64-linux-musl
+          - goarch: arm
+            goarm: 7
+            archive_suffix: armv7
+            musl: arm-linux-musleabihf
+          - goarch: mips
+            gomips: softfloat
+            archive_suffix: mips-softfloat
+            musl: mips-linux-muslsf
+          - goarch: mipsle
+            gomips: softfloat
+            archive_suffix: mipsle-softfloat
+            musl: mipsel-linux-muslsf
 
     steps:
       - name: Checkout Code
@@ -22,130 +44,72 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - name: Install Cross-Compilers
+      - name: Setup Toolchain and Build
         run: |
           set -euo pipefail
-          sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
-
-      - name: Build and Archive
-        run: |
-          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y jq curl
           mkdir -p release_assets
 
-          TARGETS="linux/amd64 linux/arm64"
+          echo "Fetching latest release info from musl-cc/musl.cc..."
+          LATEST_JSON=$(curl -sSL -f --retry 3 "https://api.github.com/repos/musl-cc/musl.cc/releases/latest")
 
-          for target in $TARGETS; do
-            GOOS=${target%/*}
-            GOARCH=${target#*/}
-            echo "Building for $GOOS/$GOARCH..."
+          ARCHIVE_NAME="${{ matrix.target.musl }}-cross.tgz"
+          TOOLCHAIN_DIR="/tmp/${{ matrix.target.musl }}-cross"
 
-            mkdir -p "build_${GOOS}_${GOARCH}"
-            cp LICENSE "build_${GOOS}_${GOARCH}/"
-            cp README.md "build_${GOOS}_${GOARCH}/"
+          DOWNLOAD_URL=$(echo "$LATEST_JSON" | jq -r ".assets[] | select(.name == \"$ARCHIVE_NAME\") | .browser_download_url")
+          EXPECTED_HASH=$(echo "$LATEST_JSON" | jq -r ".assets[] | select(.name == \"$ARCHIVE_NAME\") | .digest")
+          EXPECTED_HASH="${EXPECTED_HASH#sha256:}"
 
-            FRIENDLY_OS=$GOOS
-            FRIENDLY_ARCH=$GOARCH
+          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+            echo "Error: Could not find download URL for $ARCHIVE_NAME"
+            exit 1
+          fi
 
-            OUTPUT_NAME="matrix-cli"
-            CC="gcc"
-            LDFLAGS="-s -w -X 'main.AppVersion=${{ github.ref_name }}'"
+          echo "Downloading $ARCHIVE_NAME..."
+          curl -sSL -f --retry 3 --retry-connrefused --retry-delay 2 "$DOWNLOAD_URL" -o "/tmp/$ARCHIVE_NAME"
 
-            if [ "$GOARCH" = "arm64" ]; then
-              CC="aarch64-linux-gnu-gcc"
-            fi
+          echo "${EXPECTED_HASH}  /tmp/$ARCHIVE_NAME" > /tmp/checksum.txt
+          cd /tmp
+          sha256sum -c checksum.txt || exit 1
+          echo "Extracting $ARCHIVE_NAME..."
+          tar -xzf "$ARCHIVE_NAME"
+          cd - > /dev/null
 
-            CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH CC=$CC go build -tags goolm -trimpath -ldflags "$LDFLAGS" -o "build_${GOOS}_${GOARCH}/${OUTPUT_NAME}" ./cmd/matrix-cli
+          export PATH="${TOOLCHAIN_DIR}/bin:$PATH"
+          CC="${{ matrix.target.musl }}-gcc"
 
-            cd "build_${GOOS}_${GOARCH}"
-            tar -czvf "../release_assets/matrix-cli-${FRIENDLY_OS}-${FRIENDLY_ARCH}.tar.gz" ./*
-            cd ..
-          done
+          export CGO_ENABLED=1
+          export GOOS=linux
+          export GOARCH=${{ matrix.target.goarch }}
+          
+          if [ -n "${{ matrix.target.gomips }}" ]; then
+            export GOMIPS=${{ matrix.target.gomips }}
+          fi
+          
+          if [ -n "${{ matrix.target.goarm }}" ]; then
+            export GOARM=${{ matrix.target.goarm }}
+          fi
+
+          FRIENDLY_ARCH="${{ matrix.target.archive_suffix }}"
+          BUILD_DIR="build_linux_${FRIENDLY_ARCH}"
+          mkdir -p "$BUILD_DIR"
+          cp LICENSE "$BUILD_DIR/"
+          cp README.md "$BUILD_DIR/"
+
+          OUTPUT_NAME="matrix-cli"
+          LDFLAGS="-s -w -X 'main.AppVersion=${{ github.ref_name }}' -extldflags \"-static\""
+
+          echo "Running go build for linux/$FRIENDLY_ARCH..."
+          CC=$CC go build -tags goolm -trimpath -ldflags "$LDFLAGS" -o "${BUILD_DIR}/${OUTPUT_NAME}" ./cmd/matrix-cli
+
+          cd "$BUILD_DIR"
+          tar -czvf "../release_assets/matrix-cli-linux-${FRIENDLY_ARCH}.tar.gz" ./*
+          cd ..
 
       - name: Publish Release (Linux)
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          files: release_assets/*
-
-  release-routers:
-    name: Build Routers
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: "go.mod"
-
-      - name: Install Cross-Compilers
-        run: |
-          set -euo pipefail
-          sudo apt-get update && sudo apt-get install -y jq curl
-          cd /tmp
-          echo "Fetching latest release info from musl-cc/musl.cc..."
-          LATEST_JSON=$(curl -sSL -f --retry 3 "https://api.github.com/repos/musl-cc/musl.cc/releases/latest")
-          DOWNLOAD_URL=$(echo "$LATEST_JSON" | jq -r '.assets[] | select(.name == "mipsel-linux-muslsf-cross.tgz") | .browser_download_url')
-          EXPECTED_HASH=$(echo "$LATEST_JSON" | jq -r '.assets[] | select(.name == "mipsel-linux-muslsf-cross.tgz") | .digest')
-          EXPECTED_HASH="${EXPECTED_HASH#sha256:}"
-
-          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-            echo "Error: Could not find download URL for mipsel-linux-muslsf-cross.tgz"
-            exit 1
-          fi
-
-          if [ -z "$EXPECTED_HASH" ] || [ "$EXPECTED_HASH" = "null" ]; then
-            echo "Error: Could not find SHA256 digest in GitHub API"
-            exit 1
-          fi
-
-          echo "Downloading $DOWNLOAD_URL"
-          curl -sSL -f --retry 3 --retry-connrefused --retry-delay 2 "$DOWNLOAD_URL" -o mipsel-linux-muslsf-cross.tgz
-
-          echo "Verifying SHA256 checksum..."
-          echo "${EXPECTED_HASH}  mipsel-linux-muslsf-cross.tgz" > checksum.txt
-          sha256sum -c checksum.txt || exit 1
-
-          echo "Extracting..."
-          tar -xzf mipsel-linux-muslsf-cross.tgz
-          echo "/tmp/mipsel-linux-muslsf-cross/bin" >> $GITHUB_PATH
-
-      - name: Build and Archive
-        run: |
-          set -euo pipefail
-          mkdir -p release_assets
-
-          TARGETS="linux/mipsle"
-
-          for target in $TARGETS; do
-            GOOS=${target%/*}
-            GOARCH=${target#*/}
-            echo "Building for $GOOS/$GOARCH..."
-
-            mkdir -p "build_${GOOS}_${GOARCH}"
-            cp LICENSE "build_${GOOS}_${GOARCH}/"
-            cp README.md "build_${GOOS}_${GOARCH}/"
-
-            FRIENDLY_OS=$GOOS
-            FRIENDLY_ARCH="mipsle-softfloat"
-
-            OUTPUT_NAME="matrix-cli"
-            CC="mipsel-linux-muslsf-gcc"
-            LDFLAGS="-s -w -X 'main.AppVersion=${{ github.ref_name }}' -extldflags \"-static\""
-
-            GOMIPS=softfloat CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH CC=$CC go build -tags goolm -trimpath -ldflags "$LDFLAGS" -o "build_${GOOS}_${GOARCH}/${OUTPUT_NAME}" ./cmd/matrix-cli
-
-            cd "build_${GOOS}_${GOARCH}"
-            tar -czvf "../release_assets/matrix-cli-${FRIENDLY_OS}-${FRIENDLY_ARCH}.tar.gz" ./*
-            cd ..
-          done
-
-      - name: Publish Release (Routers)
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
-        with:
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: release_assets/*
 

@@ -53,6 +53,8 @@ func defaultTempFileClose(f *os.File) error {
 var SupportedPlatforms = map[string]string{
 	"linux/amd64":   "matrix-cli-linux-amd64.tar.gz",
 	"linux/arm64":   "matrix-cli-linux-arm64.tar.gz",
+	"linux/arm":     "matrix-cli-linux-armv7.tar.gz",
+	"linux/mips":    "matrix-cli-linux-mips-softfloat.tar.gz",
 	"linux/mipsle":  "matrix-cli-linux-mipsle-softfloat.tar.gz",
 	"darwin/amd64":  "matrix-cli-macos-intel.tar.gz",
 	"darwin/arm64":  "matrix-cli-macos-apple-silicon.tar.gz",
