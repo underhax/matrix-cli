@@ -6,7 +6,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.49
 	github.com/rs/zerolog v1.35.1
 	go.mau.fi/util v0.9.11
-	golang.org/x/net v0.57.0
+	golang.org/x/net v0.58.0
 	golang.org/x/term v0.45.0
 	maunium.net/go/mautrix v0.29.0
 )
@@ -21,8 +21,8 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/yuin/goldmark v1.8.5 // indirect
-	golang.org/x/crypto v0.54.0 // indirect
-	golang.org/x/exp v0.0.0-20260727155853-b88d891fe743 // indirect
+	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/exp v0.0.0-20260812173653-3d80eb74bc5b // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )
