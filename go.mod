@@ -3,19 +3,19 @@ module github.com/underhax/matrix-cli
 go 1.26.6
 
 require (
-	github.com/mattn/go-sqlite3 v1.14.49
+	github.com/mattn/go-sqlite3 v1.14.50
 	github.com/rs/zerolog v1.35.1
-	go.mau.fi/util v0.9.11
+	go.mau.fi/util v0.10.0
 	golang.org/x/net v0.58.0
 	golang.org/x/term v0.45.0
-	maunium.net/go/mautrix v0.29.0
+	maunium.net/go/mautrix v0.30.0
 )
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	github.com/petermattis/goid v0.0.0-20260725062400-500c67a39b75 // indirect
+	github.com/petermattis/goid v0.0.0-20260816044145-ed329add6b1b // indirect
 	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
