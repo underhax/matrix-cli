@@ -206,3 +206,61 @@ func TestNew_Failure(t *testing.T) {
 		t.Errorf("expected init vh error, got %v", err)
 	}
 }
+
+func TestFormatUserAgent(t *testing.T) {
+	tests := []struct {
+		name       string
+		appVersion string
+		goos       string
+		goarch     string
+		expected   string
+	}{
+		{
+			name:       "darwin",
+			appVersion: "v1.0.0",
+			goos:       "darwin",
+			goarch:     "arm64",
+			expected:   "matrix-cli/v1.0.0 (macOS; arm64)",
+		},
+		{
+			name:       "linux",
+			appVersion: "v1.0.1",
+			goos:       "linux",
+			goarch:     "mipsle",
+			expected:   "matrix-cli/v1.0.1 (Linux; mipsle)",
+		},
+		{
+			name:       "windows",
+			appVersion: "v1.0.2",
+			goos:       "windows",
+			goarch:     "amd64",
+			expected:   "matrix-cli/v1.0.2 (Windows; amd64)",
+		},
+		{
+			name:       "other",
+			appVersion: "v1.0.3",
+			goos:       "freebsd",
+			goarch:     "riscv64",
+			expected:   "matrix-cli/v1.0.3 (freebsd; riscv64)",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := FormatUserAgent(tc.appVersion, tc.goos, tc.goarch)
+			if got != tc.expected {
+				t.Errorf("FormatUserAgent(%q, %q, %q) = %q, want %q", tc.appVersion, tc.goos, tc.goarch, got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestSetDefaultUserAgent(t *testing.T) {
+	orig := mautrix.DefaultUserAgent
+	defer func() { mautrix.DefaultUserAgent = orig }()
+
+	SetDefaultUserAgent("v2.0.0")
+	if !strings.HasPrefix(mautrix.DefaultUserAgent, "matrix-cli/v2.0.0") {
+		t.Errorf("expected DefaultUserAgent to start with matrix-cli/v2.0.0, got %q", mautrix.DefaultUserAgent)
+	}
+}

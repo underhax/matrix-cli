@@ -129,12 +129,14 @@ func TestVerify(t *testing.T) {
 	}
 
 	tests := []struct {
-		syncErr1             error
-		syncErr2             error
-		startVerificationErr error
-		name                 string
-		targetUser           string
-		expectedErr          bool
+		syncErr1                   error
+		syncErr2                   error
+		startVerificationErr       error
+		startInRoomVerificationErr error
+		name                       string
+		targetUser                 string
+		targetRoom                 string
+		expectedErr                bool
 	}{
 		{
 			name:        "empty target user, sync success",
@@ -145,6 +147,12 @@ func TestVerify(t *testing.T) {
 			name:        "empty target user, sync fails",
 			targetUser:  "",
 			syncErr1:    errors.New("sync failed"),
+			expectedErr: true,
+		},
+		{
+			name:        "empty target user with target room, fails",
+			targetUser:  "",
+			targetRoom:  "!room1:example.com",
 			expectedErr: true,
 		},
 		{
@@ -164,6 +172,19 @@ func TestVerify(t *testing.T) {
 			targetUser:  "@user4:example.com",
 			expectedErr: false,
 		},
+		{
+			name:                       "in-room verification, start fails",
+			targetUser:                 "@user5:example.com",
+			targetRoom:                 "!room5:example.com",
+			startInRoomVerificationErr: errors.New("in-room start failed"),
+			expectedErr:                true,
+		},
+		{
+			name:        "in-room verification, success",
+			targetUser:  "@user6:example.com",
+			targetRoom:  "!room6:example.com",
+			expectedErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -180,6 +201,11 @@ func TestVerify(t *testing.T) {
 				return "txn123", tt.startVerificationErr
 			}
 			defer func() { startVerification = defaultStartVerification }()
+
+			startInRoomVerification = func(_ context.Context, _ *verificationhelper.VerificationHelper, _ id.RoomID, _ id.UserID) (id.VerificationTransactionID, error) {
+				return "txn_room_123", tt.startInRoomVerificationErr
+			}
+			defer func() { startInRoomVerification = defaultStartInRoomVerification }()
 
 			getOlmMachine = func(_ *Client) *crypto.OlmMachine {
 				return &crypto.OlmMachine{}
@@ -204,7 +230,7 @@ func TestVerify(t *testing.T) {
 			}
 			defer func() { fetchKeys = defaultFetchKeys }()
 
-			err := c.Verify(context.Background(), tt.targetUser)
+			err := c.Verify(context.Background(), tt.targetUser, tt.targetRoom)
 			if (err != nil) != tt.expectedErr {
 				t.Errorf("expected error %v, got %v", tt.expectedErr, err)
 			}

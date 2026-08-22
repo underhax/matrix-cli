@@ -37,7 +37,10 @@ data/
 
 *.md
 !README.md
+!DEVELOPMENT.md
 !.github/**/*.md
+
+*.log
 
 authorized_keys
 bot_data/

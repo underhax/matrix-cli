@@ -317,6 +317,13 @@ func defaultStartVerification(ctx context.Context, vh *verificationhelper.Verifi
 
 var startVerification = defaultStartVerification
 
+func defaultStartInRoomVerification(ctx context.Context, vh *verificationhelper.VerificationHelper, roomID id.RoomID, userID id.UserID) (id.VerificationTransactionID, error) {
+	txnID, err := vh.StartInRoomVerification(ctx, roomID, userID)
+	return txnID, wrapErr(err, "start in-room verification failed: %w")
+}
+
+var startInRoomVerification = defaultStartInRoomVerification
+
 func defaultAcceptVerification(ctx context.Context, vh *verificationhelper.VerificationHelper, txnID id.VerificationTransactionID) error {
 	return wrapErr(vh.AcceptVerification(ctx, txnID), "accept verification failed: %w")
 }

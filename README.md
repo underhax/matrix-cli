@@ -48,16 +48,7 @@ It is recommended to place the binary in your system's PATH (such as `/usr/local
 
 ## Building from Source
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/underhax/matrix-cli.git
-   cd matrix-cli
-   ```
-
-2. Compile the binary. **Important:** You must include the `goolm` tag to enable the pure-Go implementation of the Olm and Megolm cryptographic ratchets, which are required for E2EE support. You can also optionally specify a custom build version using `ldflags`:
-   ```bash
-   CGO_ENABLED=1 go build -tags goolm -ldflags "-X 'main.AppVersion=v0.0.1'" -o matrix-cli ./cmd/matrix-cli/
-   ```
+For build instructions, prerequisites, testing, Docker deployment, and cross-compilation guides, refer to the [Development Guide](DEVELOPMENT.md).
 
 ## Usage
 
@@ -166,7 +157,7 @@ Examples:
 
 ### Device Verification (`verify`)
 ```text
-Usage: matrix-cli --mode verify [--user <@user:example.com>] [--data-dir <PATH>]
+Usage: matrix-cli --mode verify [--user <@user:example.com>] [--rooms <!room:example.com>] [--data-dir <PATH>]
 Start an interactive device verification (SAS) flow.
 
 Examples:
@@ -175,6 +166,9 @@ Examples:
 
   # Initiate verification with another user (or your own devices):
   matrix-cli --mode verify --user '@bob:example.com'
+
+  # Initiate in-room verification:
+  matrix-cli --mode verify --user '@bob:example.com' --rooms '!room1:example.com'
 ```
 
 ### Logging Out (`logout`)

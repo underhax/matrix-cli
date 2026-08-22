@@ -51,13 +51,15 @@ func printUsage(modeVal string) {
 		fmt.Fprintf(os.Stderr, "  # Send a message and output results in JSON format:\n")
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode send --rooms '!room1:example.com !opaque-v12_roomid' --message 'Hello' --json\n")
 	case consts.ModeVerify:
-		fmt.Fprintf(os.Stderr, "Usage: matrix-cli --mode verify [--user <@user:example.com>] [--data-dir <PATH>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: matrix-cli --mode verify [--user <@user:example.com>] [--rooms <!room:example.com>] [--data-dir <PATH>]\n")
 		fmt.Fprintf(os.Stderr, "Start an interactive device verification (SAS) flow.\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
 		fmt.Fprintf(os.Stderr, "  # Wait for incoming verification requests:\n")
 		fmt.Fprintf(os.Stderr, "  matrix-cli --mode verify\n\n")
 		fmt.Fprintf(os.Stderr, "  # Initiate verification with another user (or your own devices):\n")
-		fmt.Fprintf(os.Stderr, "  matrix-cli --mode verify --user '@bob:example.com'\n")
+		fmt.Fprintf(os.Stderr, "  matrix-cli --mode verify --user '@bob:example.com'\n\n")
+		fmt.Fprintf(os.Stderr, "  # Initiate in-room verification:\n")
+		fmt.Fprintf(os.Stderr, "  matrix-cli --mode verify --user '@bob:example.com' --rooms '!room1:example.com'\n")
 	case consts.ModeRooms:
 		fmt.Fprintf(os.Stderr, "Usage: matrix-cli --mode rooms [--verbose] [--json] [--data-dir <PATH>]\n")
 		fmt.Fprintf(os.Stderr, "List joined rooms.\n\n")

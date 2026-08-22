@@ -88,6 +88,30 @@ func TestValidateInput(t *testing.T) {
 				`invalid room ID format for room "bad_room"`,
 			},
 		},
+		{
+			name:       "valid_verify_with_room",
+			mode:       consts.ModeVerify,
+			server:     "",
+			user:       "@valid:example.org",
+			rooms:      "!valid:example.org",
+			session:    "a",
+			db:         "b",
+			pickle:     "c",
+			wantErrors: nil,
+		},
+		{
+			name:    "invalid_verify_with_bad_room",
+			mode:    consts.ModeVerify,
+			server:  "",
+			user:    "@valid:example.org",
+			rooms:   "invalid_room_id",
+			session: "a",
+			db:      "b",
+			pickle:  "c",
+			wantErrors: []string{
+				`invalid room ID format for room "invalid_room_id"`,
+			},
+		},
 	}
 
 	for _, tt := range tests {

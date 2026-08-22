@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -40,6 +41,29 @@ const (
 
 // JSONMode globally indicates whether strict machine output is requested.
 var JSONMode bool
+
+func getOSName(goos string) string {
+	switch goos {
+	case "darwin":
+		return "macOS"
+	case "linux":
+		return "Linux"
+	case "windows":
+		return "Windows"
+	default:
+		return goos
+	}
+}
+
+// FormatUserAgent constructs a standard User-Agent header string.
+func FormatUserAgent(appVersion, goos, goarch string) string {
+	return fmt.Sprintf("matrix-cli/%s (%s; %s)", appVersion, getOSName(goos), goarch)
+}
+
+// SetDefaultUserAgent configures the default User-Agent across all mautrix clients.
+func SetDefaultUserAgent(appVersion string) {
+	mautrix.DefaultUserAgent = FormatUserAgent(appVersion, runtime.GOOS, runtime.GOARCH)
+}
 
 // New creates a new Client instance.
 func New(ctx context.Context, session *config.Session, db *sql.DB, picklePath string, log *logger.Logger, mode string) (*Client, error) {

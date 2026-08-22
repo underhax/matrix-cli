@@ -3,6 +3,7 @@ package client
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -52,7 +53,7 @@ func (c *Client) checkStalePrivateKeys(ctx context.Context, mach *crypto.OlmMach
 // Verify blocks until the sync loop terminates, surfacing cancellation or transport errors
 // raised by SyncWithContext. It is used to drive interactive device-verification flows that
 // rely on the long-poll context to deliver incoming verification requests.
-func (c *Client) Verify(ctx context.Context, targetUser string) error {
+func (c *Client) Verify(ctx context.Context, targetUser, targetRoom string) error {
 	c.refreshCrossSigningKeys(ctx, c.Matrix.UserID)
 
 	mach := getOlmMachine(c)
@@ -71,7 +72,11 @@ func (c *Client) Verify(ctx context.Context, targetUser string) error {
 		}
 	}
 
+	targetRoom = strings.TrimSpace(targetRoom)
 	if targetUser == "" {
+		if targetRoom != "" {
+			return errors.New("target user is required for in-room verification")
+		}
 		fprintlnStderr("Waiting for verification requests. Trigger verification from another device...")
 		if err := matrixSyncWithContext(ctx, c.Matrix); err != nil {
 			return fmt.Errorf("verification sync aborted: %w", err)
@@ -81,17 +86,27 @@ func (c *Client) Verify(ctx context.Context, targetUser string) error {
 
 	userID := id.UserID(targetUser)
 	c.ActiveVerificationUser = userID
-	fprintfStderr("Initiating verification with %s...\n", userID)
 
 	if userID != c.Matrix.UserID {
 		c.refreshCrossSigningKeys(ctx, userID)
 	}
 
-	txnID, err := startVerification(ctx, c.VH, userID)
-	if err != nil {
-		return fmt.Errorf("failed to start verification: %w", err)
+	if targetRoom != "" {
+		roomID := id.RoomID(targetRoom)
+		fprintfStderr("Initiating in-room verification with %s in %s...\n", userID, roomID)
+		txnID, err := startInRoomVerification(ctx, c.VH, roomID, userID)
+		if err != nil {
+			return fmt.Errorf("failed to start in-room verification: %w", err)
+		}
+		fprintfStderr("Started in-room transaction %s. Waiting for the other side to accept...\n", txnID)
+	} else {
+		fprintfStderr("Initiating verification with %s...\n", userID)
+		txnID, err := startVerification(ctx, c.VH, userID)
+		if err != nil {
+			return fmt.Errorf("failed to start verification: %w", err)
+		}
+		fprintfStderr("Started transaction %s. Waiting for the other side to accept...\n", txnID)
 	}
-	fprintfStderr("Started transaction %s. Waiting for the other side to accept...\n", txnID)
 
 	if err := matrixSyncWithContext(ctx, c.Matrix); err != nil {
 		return fmt.Errorf("verification sync aborted: %w", err)

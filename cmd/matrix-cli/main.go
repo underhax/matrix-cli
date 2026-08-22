@@ -218,6 +218,7 @@ func checkModeOpts(mode string, jsonMode bool) (bool, error) {
 }
 
 func run(args []string) error {
+	client.SetDefaultUserAgent(AppVersion)
 	if handled, err := checkCommands(args); handled {
 		return err
 	}
@@ -317,7 +318,7 @@ func validateServerURL(server string) error {
 
 func validateRoomsInput(mode, rooms string) []string {
 	var msgs []string
-	if rooms != "" && (mode == consts.ModeSend || mode == consts.ModeListen || mode == consts.ModeRoomInfo) {
+	if rooms != "" && (mode == consts.ModeSend || mode == consts.ModeListen || mode == consts.ModeRoomInfo || mode == consts.ModeVerify) {
 		for r := range strings.FieldsSeq(rooms) {
 			if err := validator.ValidateRoomID(r); err != nil {
 				msgs = append(msgs, fmt.Sprintf("%v for room %q", err, r))
@@ -436,7 +437,7 @@ func executeMode(ctx context.Context, cli *client.Client, mode, rooms, msg, targ
 			return fmt.Errorf("send error: %w", err)
 		}
 	case consts.ModeVerify:
-		if err := cli.Verify(ctx, targetUser); err != nil {
+		if err := cli.Verify(ctx, targetUser, rooms); err != nil {
 			return fmt.Errorf("verify mode error: %w", err)
 		}
 	case consts.ModeRooms, consts.ModeRoomInfo:
