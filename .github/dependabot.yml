@@ -14,3 +14,10 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "go"
+
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "docker"
