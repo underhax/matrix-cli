@@ -491,8 +491,8 @@ func TestLoginTokenHandler(t *testing.T) {
 				}
 			} else {
 				select {
-				case <-errChan:
-					t.Errorf("expected no error")
+				case err := <-errChan:
+					t.Errorf("expected no error, got %v", err)
 				default:
 				}
 			}
@@ -537,8 +537,8 @@ func TestServeSSOCallback(t *testing.T) {
 	serveSSOCallback(srv, ml, errChan)
 
 	select {
-	case <-errChan:
-		t.Errorf("expected no error for ErrServerClosed")
+	case err := <-errChan:
+		t.Errorf("expected no error for ErrServerClosed, got %v", err)
 	default:
 	}
 

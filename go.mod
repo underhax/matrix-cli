@@ -1,14 +1,14 @@
 module github.com/underhax/matrix-cli
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/rs/zerolog v1.35.1
-	go.mau.fi/util v0.10.1
+	go.mau.fi/util v0.11.0
 	golang.org/x/net v0.61.0
 	golang.org/x/term v0.47.0
-	maunium.net/go/mautrix v0.31.0
+	maunium.net/go/mautrix v0.32.0
 )
 
 require (
@@ -22,9 +22,7 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/yuin/goldmark v1.8.6 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
-	golang.org/x/exp v0.0.0-20261009195045-ca0d7ba23607 // indirect
+	golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 )
-
-replace maunium.net/go/mautrix => github.com/underhax/mautrix-go v0.0.0-20260822140918-c6b718158355
