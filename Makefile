@@ -1,6 +1,6 @@
 VERSION ?= dev
 
-.PHONY: check test coverage vulncheck docker trivy verify build
+.PHONY: check test coverage vulncheck docker trivy secrets-scan verify build
 
 check:
 	@test -z "$$(gofmt -s -l .)" || (echo "Unformatted files found. Run 'gofmt -s -w .' to fix them." && false)
@@ -23,7 +23,10 @@ docker:
 trivy:
 	trivy fs --severity CRITICAL,HIGH .
 
-verify: check test vulncheck trivy docker
+secrets-scan:
+	gitleaks detect --source . --no-git --no-color -v --redact
+
+verify: check test vulncheck trivy docker secrets-scan
 
 build:
 	CGO_ENABLED=1 go build -trimpath -tags goolm -ldflags "-s -w -X main.AppVersion=$(VERSION)" -o matrix-cli ./cmd/matrix-cli
